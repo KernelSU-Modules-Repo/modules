@@ -1,4 +1,4 @@
-# KernelSU Modules Repository [[1]](#refer-1)
+# KernelSU Modules Repository
 
 https://modules.kernelsu.org
 

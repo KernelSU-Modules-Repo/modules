@@ -97,7 +97,7 @@ export default function SubmissionPage (): ReactElement {
       const issueTitle = showPackageName()
         ? `[${submissionType}] ${packageName}`
         : `[${submissionType}] ${title}`
-      window.open(`https://github.com/Xposed-Modules-Repo/submission/issues/new?title=${
+      window.open(`https://github.com/KernelSU-Modules-Repo/submission/issues/new?title=${
         encodeURIComponent(issueTitle)
       }&body=${
         encodeURIComponent(description)
@@ -107,7 +107,7 @@ export default function SubmissionPage (): ReactElement {
   return (
     <Layout>
       <Container maxWidth="sm" className={classes.landing}>
-        <h1 className={classes.title}>Submit Your Xposed Module!</h1>
+        <h1 className={classes.title}>Submit Your KernelSU Modules!</h1>
         <form>
           <div className={classes.flex}>
             <span className={classes.label}>I'd like to </span>

@@ -11,7 +11,7 @@ const { fetchFromGithub, replacePrivateImage } = require('./github-source')
 function makeRepositoryQuery (name) {
   return gql`
 {
-  repository(owner: "Xposed-Modules-Repo", name: "${name}") {
+  repository(owner: "KernelSU-Modules-Repo", name: "${name}") {
     name
     description
     url
@@ -119,7 +119,7 @@ function makeRepositoriesQuery (cursor) {
   const arg = cursor ? `, after: "${cursor}"` : ''
   return gql`
 {
-  organization(login: "Xposed-Modules-Repo") {
+  organization(login: "KernelSU-Modules-Repo") {
     repositories(first: ${PAGINATION}${arg}, orderBy: {field: UPDATED_AT, direction: DESC}, privacy: PUBLIC) {
       edges {
         node {
@@ -302,7 +302,7 @@ function parseRepositoryObject (repo) {
     repo.releases.edges = repo.releases.edges
       .filter(({ node: { releaseAssets, isDraft, isLatest, tagName } }) =>
         !isLatest && !isDraft && releaseAssets && tagName.match(/^\d+-.+$/) && releaseAssets.edges
-          .some(({ node: { contentType } }) => contentType === 'application/vnd.android.package-archive'))
+          .some(({ node: { contentType } }) => contentType === 'application/zip'))
   }
   repo.isModule = !!(repo.name.match(/\./) &&
     repo.description &&

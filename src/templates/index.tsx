@@ -48,7 +48,7 @@ export default function IndexPage ({ data }: any): React.ReactElement {
   }
   return (
     <Layout>
-      <h1 className={classes.title}>Xposed Module Repository</h1>
+      <h1 className={classes.title}>KernelSU Modules Repository</h1>
       <div className={classes.container}>
           {data.allGithubRepository.edges
             .map(({ node: repo }: any) => (

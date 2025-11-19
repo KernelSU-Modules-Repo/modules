@@ -8,8 +8,8 @@ on:
       release:
         description: 'release id'
         required: true
-      apk:
-        description: 'apk url'
+      zip:
+        description: 'module zip url'
         required: true
       tag:
         description: 'tag name'
@@ -22,14 +22,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          wget -O release.apk '${{ github.event.inputs.apk }}'
-          AAPT=$(ls $ANDROID_SDK_ROOT/build-tools/**/aapt2 | tail -1)
-          VERCODE=$($AAPT dump badging release.apk | head -1 | sed -n "/^package:/ s/^.*versionCode='\([0-9]*\)'.*/\1/p")
-          VERNAME=$($AAPT dump badging release.apk | head -1 | sed -n "/^package:/ s/^.*versionName='\([^']*\)'.*/\1/p")
+          wget -O module.zip '${{ github.event.inputs.zip }}'
+          unzip -q module.zip
+          if [ ! -f module.prop ]; then
+            echo "Error: module.prop not found in zip file"
+            exit 1
+          fi
+          VERCODE=$(grep '^versionCode=' module.prop | cut -d'=' -f2 | tr -d '\r\n ')
+          VERNAME=$(grep '^version=' module.prop | cut -d'=' -f2 | tr -d '\r\n')
+          if [ -z "$VERCODE" ] || [ -z "$VERNAME" ]; then
+            echo "Error: versionCode or version not found in module.prop"
+            exit 1
+          fi
           VERNAME="${VERNAME// /_}"
-          echo '${{ github.event.inputs.tag }}' "-> $VERCODE-$VERNAME"
+          echo "Input tag: '${{ github.event.inputs.tag }}' -> Parsed: $VERCODE-$VERNAME"
           if [[ '${{ github.event.inputs.tag }}' == "$VERCODE-$VERNAME" ]]; then
-            exit
+            echo "Tag already correct, skipping..."
+            exit 0
           fi
           mkdir test
           cd test

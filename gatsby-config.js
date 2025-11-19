@@ -2,10 +2,10 @@ const flexsearchConfig = require('./src/flexsearch-config')
 
 module.exports = {
   siteMetadata: {
-    title: 'Xposed Module Repository',
-    siteUrl: 'https://modules.lsposed.org',
-    description: 'New Xposed Module Repository',
-    author: 'https://github.com/Xposed-Modules-Repo/modules/graphs/contributors'
+    title: 'KernelSU Modules Repository',
+    siteUrl: 'https://modules.kernelsu.org',
+    description: 'Official KernelSU Modules Repository',
+    author: 'https://github.com/KernelSU-Modules-Repo/modules/graphs/contributors'
   },
   plugins: [
     'gatsby-plugin-postcss',
@@ -15,8 +15,8 @@ module.exports = {
     {
       resolve: 'gatsby-plugin-manifest',
       options: {
-        name: 'Xposed Module Repository',
-        short_name: 'Xposed Module Repo',
+        name: 'KernelSU Modules Repository',
+        short_name: 'KernelSU Modules Repo',
         start_url: '/',
         background_color: '#1e88e5',
         theme_color: '#1e88e5',

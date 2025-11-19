@@ -59,7 +59,7 @@ runs:
       run: |
         yarn install --immutable
         yarn build
-        echo "modules.lsposed.org" > ./public/CNAME
+        echo "modules.kernelsu.org" > ./public/CNAME
       env:
         GRAPHQL_TOKEN: ${{ inputs.token }}
         REPO: ${{ inputs.repo }}

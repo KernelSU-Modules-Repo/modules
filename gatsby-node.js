@@ -34,11 +34,6 @@ function makeRepositoryQuery (name) {
         text
       }
     }
-    scope: object(expression: "HEAD:SCOPE") {
-      ... on Blob {
-        text
-      }
-    }
     sourceUrl: object(expression: "HEAD:SOURCE_URL") {
       ... on Blob {
         text
@@ -141,11 +136,6 @@ function makeRepositoriesQuery (cursor) {
             }
           }
           summary: object(expression: "HEAD:SUMMARY") {
-            ... on Blob {
-              text
-            }
-          }
-          scope: object(expression: "HEAD:SCOPE") {
             ... on Blob {
               text
             }

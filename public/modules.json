@@ -22,7 +22,7 @@
             "name": "meta-overlayfs-1-stable.zip",
             "contentType": "application/zip",
             "downloadUrl": "https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/download/1-stable/meta-overlayfs-1-stable.zip",
-            "downloadCount": 11,
+            "downloadCount": 16,
             "size": 450261
           }
         ],
@@ -31,9 +31,9 @@
         "isLatestSnapshot": true
       }
     ],
-    "updatedAt": "2025-11-21T08:23:47Z",
+    "updatedAt": "2025-11-21T08:47:13Z",
     "createdAt": "2025-11-21T04:35:16Z",
-    "stargazerCount": 8,
+    "stargazerCount": 10,
     "summary": "An implementation of a metamodule using OverlayFS for KernelSU",
     "sourceUrl": "https://github.com/KernelSU-Modules-Repo/meta-overlayfs",
     "isModule": true,

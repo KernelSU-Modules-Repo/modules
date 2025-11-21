@@ -93,16 +93,28 @@ try {
                                                 Published on {new Date(release.publishedAt).toLocaleDateString(undefined, { dateStyle: 'long' })}
                                             </div>
                                         </div>
-                                        <a 
-                                            href={release.url}
-                                            target="_blank"
-                                            class="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
-                                        >
-                                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                            </svg>
-                                            Download
-                                        </a>
+                                        {release.releaseAssets && release.releaseAssets.length > 0 ? (
+                                            <a 
+                                                href={release.releaseAssets[0].downloadUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                class="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+                                            >
+                                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
+                                                Download
+                                            </a>
+                                        ) : (
+                                            <a 
+                                                href={release.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                class="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors"
+                                            >
+                                                View Release
+                                            </a>
+                                        )}
                                     </div>
                                     {release.descriptionHTML && (
                                         <div class="prose prose-sm prose-slate dark:prose-invert max-w-none bg-gray-50 dark:bg-slate-950/50 rounded-lg p-4 border border-gray-100 dark:border-slate-800/50">
@@ -201,9 +213,25 @@ try {
                                 <div class="text-sm text-gray-500 dark:text-slate-400 mb-4">
                                     Released {new Date(latestRelease.publishedAt).toLocaleDateString()}
                                 </div>
-                                <a href={latestRelease.url} target="_blank" class="block w-full text-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20">
-                                    Download Now
-                                </a>
+                                {latestRelease.releaseAssets && latestRelease.releaseAssets.length > 0 ? (
+                                    <a 
+                                        href={latestRelease.releaseAssets[0].downloadUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        class="block w-full text-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+                                    >
+                                        Download Now
+                                    </a>
+                                ) : (
+                                    <a 
+                                        href={latestRelease.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        class="block w-full text-center px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors"
+                                    >
+                                        View Release
+                                    </a>
+                                )}
                             </div>
                         </div>
                     )}

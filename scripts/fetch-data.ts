@@ -328,9 +328,9 @@ function parseRepositoryObject(repo: any) {
       repo.latestSnapshotRelease.isLatestSnapshot = true;
     }
   } else {
-    console.log(`Repo ${repo.name} rejected.`);
+    console.log(`Repo ${repo.moduleId} rejected.`);
   }
-  console.log(`Got repo: ${repo.name}, is module: ${repo.isModule}`);
+  console.log(`Got repo: ${repo.moduleId}, is module: ${repo.isModule}`);
   return repo;
 }
 

@@ -1,14 +1,11 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { getCollection } from 'astro:content';
-import fs from 'fs';
-import path from 'path';
+import modules from '../../../.cache/modules.json';
 
-export async function getStaticPaths() {
-  const modules = await getCollection('modules');
-  return modules.map(module => ({
-    params: { name: module.data.moduleId },
-    props: { module: module.data },
+export function getStaticPaths() {
+  return modules.map((m: any) => ({
+    params: { name: m.moduleId },
+    props: { module: m },
   }));
 }
 
@@ -22,17 +19,7 @@ const authors = module.authors || [];
 const latestRelease = module.releases && module.releases.length > 0 ? module.releases[0] : null;
 const sourceUrl = module.sourceUrl || `https://github.com/KernelSU-Modules-Repo/${module.moduleId}`;
 
-// Read README from public/module/{moduleId}.json at build time
-let readmeHTML = '';
-try {
-  const modulePath = path.join(process.cwd(), 'public', 'module', `${module.moduleId}.json`);
-  if (fs.existsSync(modulePath)) {
-    const fullModuleData = JSON.parse(fs.readFileSync(modulePath, 'utf-8'));
-    readmeHTML = fullModuleData.readmeHTML || '';
-  }
-} catch (e) {
-  console.error(`Failed to read module data for ${module.moduleId}:`, e);
-}
+const readmeHTML = module.readmeHTML || '';
 ---
 
 <Layout title={`${displayName} - KernelSU Modules`} description={description}>
@@ -157,6 +144,7 @@ try {
                                                 target="_blank" 
                                                 class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                                             >
+                                                <img src={`https://github.com/${author.name}.png?size=32`} alt="" class="w-4 h-4 rounded-full" />
                                                 {author.name}
                                             </a>
                                         ))}

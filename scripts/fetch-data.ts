@@ -4,6 +4,93 @@ import { GraphQLClient, gql } from 'graphql-request';
 import ellipsize from 'ellipsize';
 import MarkdownIt from 'markdown-it';
 
+// Type definitions
+type ReleaseAsset = {
+  name: string;
+  contentType: string;
+  downloadUrl: string;
+  downloadCount: number;
+  size: number;
+};
+
+type GraphQlRelease = {
+  name: string;
+  url: string;
+  isDraft: boolean;
+  description: string;
+  descriptionHTML: string;
+  createdAt: string;
+  publishedAt: string;
+  updatedAt: string;
+  tagName: string;
+  isPrerelease: boolean;
+  isLatest: boolean;
+  releaseAssets: {
+    edges: Array<{ node: ReleaseAsset }>;
+  };
+};
+
+type GraphQlRepository = {
+  name: string;
+  description: string;
+  url: string;
+  homepageUrl?: string;
+  collaborators: {
+    edges: Array<{
+      node: {
+        login: string;
+        name?: string;
+      };
+    }>;
+  };
+  readme?: { text: string };
+  moduleJson?: { text: string };
+  latestRelease?: GraphQlRelease;
+  releases: {
+    edges: Array<{ node: GraphQlRelease }>;
+  };
+  updatedAt: string;
+  createdAt: string;
+  stargazerCount: number;
+};
+
+type GraphQlRepositoryWrapped = {
+  node: GraphQlRepository;
+  cursor: string;
+};
+
+type ModuleRelease = {
+  name: string;
+  url: string;
+  descriptionHTML: string;
+  createdAt: string;
+  publishedAt: string;
+  updatedAt: string;
+  tagName: string;
+  isPrerelease: boolean;
+  releaseAssets: ReleaseAsset[];
+};
+
+type ModuleJson = {
+  moduleId: string;
+  moduleName: string;
+  url: string;
+  homepageUrl: string | null;
+  authors: Array<{ name: string; link: string }>;
+  latestRelease: string | null;
+  latestReleaseTime: string;
+  latestBetaReleaseTime: string;
+  latestSnapshotReleaseTime: string;
+  releases: ModuleRelease[];
+  readme: string | null;
+  readmeHTML: string | null;
+  summary: string | null;
+  sourceUrl: string | null;
+  updatedAt: string;
+  createdAt: string;
+  stargazerCount: number;
+};
+
 const md = new MarkdownIt({
   html: true,
   linkify: true,
@@ -23,17 +110,6 @@ const client = new GraphQLClient('https://api.github.com/graphql', {
     authorization: `Bearer ${GRAPHQL_TOKEN}`,
   },
 });
-
-// Custom JSON stringify that puts moduleId first
-function stringifyWithModuleIdFirst(obj: any, space?: number): string {
-  return JSON.stringify(obj, (key, value) => {
-    if (value && typeof value === 'object' && !Array.isArray(value) && value.moduleId) {
-      const { moduleId, moduleName, ...rest } = value;
-      return { moduleId, moduleName, ...rest };
-    }
-    return value;
-  }, space);
-}
 
 const makeRepositoryQuery = (name: string) => gql`
 {
@@ -217,9 +293,9 @@ const makeRepositoriesQuery = (cursor: string | null) => {
 
 const REGEX_PUBLIC_IMAGES = /https:\/\/github\.com\/[a-zA-Z0-9-]+\/[\w\-.]+\/assets\/\d+\/([0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12})/g;
 
-function replacePrivateImage(markdown: string, html: string) {
+function replacePrivateImage(markdown: string, html: string): string {
   if (!markdown) return html;
-  const publicMatches = new Map();
+  const publicMatches = new Map<string, string>();
   for (const match of markdown.matchAll(REGEX_PUBLIC_IMAGES)) {
     publicMatches.set(match[0], match[1]);
   }
@@ -230,310 +306,221 @@ function replacePrivateImage(markdown: string, html: string) {
   return html;
 }
 
-function parseRepositoryObject(repo: any) {
-  // Rename name to moduleId and description to moduleName at the earliest stage
-  if (repo.name) {
-    repo.moduleId = repo.name;
-    delete repo.name;
-  }
-  if (repo.description) {
-    repo.moduleName = repo.description;
-    delete repo.description;
+function convert2json(repo: GraphQlRepository): ModuleJson | null {
+  // Merge latestRelease into releases if not present
+  if (repo.latestRelease && !repo.releases.edges.find(r => r.node.tagName === repo.latestRelease?.tagName)) {
+    repo.releases.edges.push({ node: repo.latestRelease });
   }
 
-  // Process module.json
+  // Filter and transform releases
+  const releases: ModuleRelease[] = repo.releases.edges
+    .filter(({ node }) =>
+      !node.isDraft &&
+      node.tagName.match(/^\d+-.+$/) &&
+      node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
+    )
+    .map(({ node }) => ({
+      name: node.name,
+      url: node.url,
+      descriptionHTML: replacePrivateImage(node.description, node.descriptionHTML),
+      createdAt: node.createdAt,
+      publishedAt: node.publishedAt,
+      updatedAt: node.updatedAt,
+      tagName: node.tagName,
+      isPrerelease: node.isPrerelease,
+      releaseAssets: node.releaseAssets.edges.map(({ node: asset }) => ({
+        name: asset.name,
+        contentType: asset.contentType,
+        downloadUrl: asset.downloadUrl,
+        downloadCount: asset.downloadCount,
+        size: asset.size,
+      })),
+    }));
+
+  // Check if this is a valid module
+  const isModule = !!(
+    repo.name.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/) &&
+    repo.description &&
+    releases.length &&
+    !['.github', 'submission', 'developers', 'modules'].includes(repo.name)
+  );
+
+  if (!isModule) {
+    console.log(`skipped ${repo.name}`);
+    return null;
+  }
+  console.log(`found ${repo.name}`);
+
+  // Find latest releases by type
+  const latestRelease = releases.find(v => !v.isPrerelease);
+  const latestBetaRelease = releases.find(v => v.isPrerelease && !v.name.match(/^(snapshot|nightly).*/i)) || latestRelease;
+  const latestSnapshotRelease = releases.find(v => v.isPrerelease && v.name.match(/^(snapshot|nightly).*/i)) || latestBetaRelease;
+
+  // Generate README HTML
+  const readmeText = repo.readme?.text?.trim() || null;
+  const readmeHTML = readmeText ? md.render(readmeText) : null;
+
+  // Parse module.json for additional metadata
+  let summary: string | null = null;
+  let sourceUrl: string | null = null;
+  let additionalAuthors: Array<{ type?: string; name: string; link?: string }> = [];
+
   if (repo.moduleJson) {
     try {
       const moduleData = JSON.parse(repo.moduleJson.text);
-
       if (moduleData.summary && typeof moduleData.summary === 'string') {
-        repo.summary = ellipsize(moduleData.summary.trim(), 512).trim();
+        summary = ellipsize(moduleData.summary.trim(), 512).trim();
       }
-
       if (moduleData.sourceUrl && typeof moduleData.sourceUrl === 'string') {
-        repo.sourceUrl = moduleData.sourceUrl.replace(/[\r\n]/g, '').trim();
+        sourceUrl = moduleData.sourceUrl.replace(/[\r\n]/g, '').trim();
       }
-
       if (moduleData.additionalAuthors instanceof Array) {
-        const validAuthors = [];
-        for (const author of moduleData.additionalAuthors) {
-          if (author && typeof author === 'object') {
-            const validAuthor: any = {};
-            for (const key of Object.keys(author)) {
-              if (['type', 'name', 'link'].includes(key)) {
-                validAuthor[key] = author[key];
-              }
-            }
-            validAuthors.push(validAuthor);
-          }
-        }
-        repo.additionalAuthors = validAuthors;
+        additionalAuthors = moduleData.additionalAuthors.filter((a: any) => a && typeof a === 'object');
       }
     } catch (e: any) {
-      console.log(`Failed to parse module.json for ${repo.moduleId}: ${e.message}`);
+      console.log(`Failed to parse module.json for ${repo.name}: ${e.message}`);
     }
   }
 
-  if (repo.readme) {
-    repo.readme = repo.readme.text;
+  // Build authors list
+  const collaborators = repo.collaborators.edges.map(({ node }) => ({
+    name: node.name || node.login,
+    login: node.login,
+  }));
+
+  const authorsToRemove = new Set(
+    additionalAuthors.filter(a => a.type === 'remove').map(a => a.name)
+  );
+
+  let authors = collaborators
+    .filter(c => !authorsToRemove.has(c.name) && !authorsToRemove.has(c.login))
+    .map(c => ({ name: c.name, link: `https://github.com/${c.login}` }));
+
+  const existingNames = new Set(authors.map(a => a.name));
+  for (const author of additionalAuthors.filter(a => a.type === 'add' || !a.type)) {
+    if (!existingNames.has(author.name)) {
+      authors.push({ name: author.name, link: author.link || '' });
+      existingNames.add(author.name);
+    }
   }
 
-  if (repo.scope) {
-    try {
-      repo.scope = JSON.parse(repo.scope.text);
-    } catch (e) {
-      repo.scope = null;
-    }
-  }
-
-  if (repo.releases) {
-    if (repo.latestRelease) {
-      repo.releases.edges = [{ node: repo.latestRelease }, ...repo.releases.edges];
-    }
-    repo.releases.edges = repo.releases.edges
-      .filter(({ node: { releaseAssets, isDraft, isLatest, tagName } }: any) =>
-        !isLatest && !isDraft && releaseAssets && tagName.match(/^\d+-.+$/) && releaseAssets.edges
-          .some(({ node: { contentType } }: any) => contentType === 'application/zip'));
-  }
-
-  repo.isModule = !!(repo.moduleId.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/) &&
-    repo.moduleName &&
-    repo.releases &&
-    repo.releases.edges.length &&
-    !['.github', 'submission', 'developers', 'modules'].includes(repo.moduleId));
-
-  if (repo.isModule) {
-    for (const release of repo.releases.edges) {
-      release.node.descriptionHTML = replacePrivateImage(release.node.description, release.node.descriptionHTML || '');
-    }
-    repo.latestRelease = repo.releases.edges.find(({ node: { isPrerelease } }: any) => !isPrerelease);
-    repo.latestReleaseTime = '1970-01-01T00:00:00Z';
-    if (repo.latestRelease) {
-      repo.latestRelease = repo.latestRelease.node;
-      repo.latestReleaseTime = repo.latestRelease.publishedAt;
-      repo.latestRelease.isLatest = true;
-    }
-    repo.latestBetaRelease = repo.releases.edges.find(({ node: { isPrerelease, name } }: any) => isPrerelease && !name.match(/^(snapshot|nightly).*/i)) || { node: repo.latestRelease };
-    repo.latestBetaReleaseTime = '1970-01-01T00:00:00Z';
-    if (repo.latestBetaRelease) {
-      repo.latestBetaRelease = repo.latestBetaRelease.node;
-      repo.latestBetaReleaseTime = repo.latestBetaRelease.publishedAt;
-      repo.latestBetaRelease.isLatestBeta = true;
-    }
-    repo.latestSnapshotRelease = repo.releases.edges.find(({ node: { isPrerelease, name } }: any) => isPrerelease && name.match(/^(snapshot|nightly).*/i)) || { node: repo.latestBetaRelease };
-    repo.latestSnapshotReleaseTime = '1970-01-01T00:00:00Z';
-    if (repo.latestSnapshotRelease) {
-      repo.latestSnapshotRelease = repo.latestSnapshotRelease.node;
-      repo.latestSnapshotReleaseTime = repo.latestSnapshotRelease.publishedAt;
-      repo.latestSnapshotRelease.isLatestSnapshot = true;
-    }
-  } else {
-    console.log(`Repo ${repo.moduleId} rejected.`);
-  }
-  console.log(`Got repo: ${repo.moduleId}, is module: ${repo.isModule}`);
-  return repo;
-}
-
-function flatten(object: any) {
-  for (const key of Object.keys(object)) {
-    if (object[key] !== null && object[key] !== undefined && typeof object[key] === 'object') {
-      if (object[key].edges) {
-        object[key] = object[key].edges.map((edge: any) => edge.node);
-      }
-    }
-    if (object[key] !== null && object[key] !== undefined && typeof object[key] === 'object') {
-      flatten(object[key]);
-    }
-  }
+  return {
+    moduleId: repo.name,
+    moduleName: repo.description,
+    url: repo.url,
+    homepageUrl: repo.homepageUrl || null,
+    authors,
+    latestRelease: latestRelease?.name || null,
+    latestReleaseTime: latestRelease?.publishedAt || '1970-01-01T00:00:00Z',
+    latestBetaReleaseTime: latestBetaRelease?.publishedAt || '1970-01-01T00:00:00Z',
+    latestSnapshotReleaseTime: latestSnapshotRelease?.publishedAt || '1970-01-01T00:00:00Z',
+    releases,
+    readme: readmeText,
+    readmeHTML,
+    summary,
+    sourceUrl,
+    updatedAt: repo.updatedAt,
+    createdAt: repo.createdAt,
+    stargazerCount: repo.stargazerCount,
+  };
 }
 
 async function main() {
-  let cursor = null;
-  let page = 1;
-  let total = 0;
-  let mergedResult: any = {
-    data: {
-      organization: {
-        repositories: {
-          edges: []
-        }
-      }
+  const cacheDir = path.resolve('.cache');
+  const graphqlCachePath = path.join(cacheDir, 'graphql.json');
+  const modulesCachePath = path.join(cacheDir, 'modules.json');
+
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  }
+
+  const modulePackage = process.env.REPO
+    ? process.env.REPO.includes('/') ? process.env.REPO.split('/')[1] : process.env.REPO
+    : null;
+
+  let mergedRepositories: GraphQlRepositoryWrapped[] = [];
+
+  if (modulePackage && fs.existsSync(modulesCachePath)) {
+    // Incremental update: fetch single module
+    console.log(`Querying GitHub API for module ${modulePackage}`);
+    const result: any = await client.request(makeRepositoryQuery(modulePackage));
+
+    if (!result.repository) {
+      console.error('Repository not found');
+      return;
     }
-  };
 
-  const repo_name = process.env.REPO ? process.env.REPO.split('/')[1] : null;
-  const cachePath = path.resolve('../cached_graphql.json'); // Use parent directory cache for now or migrate it
+    const module = convert2json(result.repository);
+    if (!module) return;
 
-  if (repo_name && fs.existsSync(cachePath)) {
-    const data = fs.readFileSync(cachePath, 'utf-8');
-    mergedResult = JSON.parse(data);
-    mergedResult.data.organization.repositories.edges = mergedResult.data.organization.repositories.edges.filter((value: any) => value.node.name !== repo_name);
+    // Load existing modules and update
+    let modules: ModuleJson[] = JSON.parse(fs.readFileSync(modulesCachePath, 'utf-8'));
+    modules = modules.filter(m => m.moduleId !== modulePackage);
+    modules.unshift(module);
 
-    console.log(`Fetching ${repo_name} from GitHub API`);
-    const result: any = await client.request(makeRepositoryQuery(repo_name));
-    mergedResult.data.organization.repositories.edges.unshift({ 'node': result.repository });
+    // Sort by latest release time
+    modules.sort((a, b) => {
+      const aTime = Math.max(
+        Date.parse(a.latestReleaseTime),
+        Date.parse(a.latestBetaReleaseTime),
+        Date.parse(a.latestSnapshotReleaseTime)
+      );
+      const bTime = Math.max(
+        Date.parse(b.latestReleaseTime),
+        Date.parse(b.latestBetaReleaseTime),
+        Date.parse(b.latestSnapshotReleaseTime)
+      );
+      return bTime - aTime;
+    });
+
+    fs.writeFileSync(modulesCachePath, JSON.stringify(modules));
+    console.log(`Updated module ${modulePackage}`);
   } else {
+    // Full fetch: get all repositories
+    let cursor: string | null = null;
+    let page = 1;
+    let total = 0;
+
     while (true) {
       console.log(`Querying GitHub API, page ${page}, total ${Math.ceil(total / PAGINATION) || 'unknown'}, cursor: ${cursor}`);
       const result: any = await client.request(makeRepositoriesQuery(cursor));
 
-      mergedResult.data.organization.repositories.edges =
-        mergedResult.data.organization.repositories.edges.concat(result.organization.repositories.edges);
+      mergedRepositories = mergedRepositories.concat(result.organization.repositories.edges);
 
-      if (!result.organization.repositories.pageInfo.hasNextPage) {
-        break;
-      }
+      if (!result.organization.repositories.pageInfo.hasNextPage) break;
       cursor = result.organization.repositories.pageInfo.endCursor;
       total = result.organization.repositories.totalCount;
       page++;
     }
-  }
 
-  // Save cache
-  fs.writeFileSync(cachePath, JSON.stringify(mergedResult, null, 2));
+    // Save raw GraphQL response for incremental updates
+    fs.writeFileSync(graphqlCachePath, JSON.stringify({ repositories: mergedRepositories }, null, 2));
 
-  // Process and Generate Output
-  const modules = [];
-  const rawRepos = mergedResult.data.organization.repositories.edges.map((edge: any) => edge.node);
-
-  for (let repo of rawRepos) {
-    // Deep copy to avoid mutating cache
-    repo = JSON.parse(JSON.stringify(repo));
-    repo = parseRepositoryObject(repo);
-
-    if (repo.isModule) {
-      // Generate Readme HTML
-      if (repo.readme) {
-        repo.readmeHTML = md.render(repo.readme);
-      }
-      modules.push(repo);
-    }
-  }
-
-  const rootPath = path.resolve('./public');
-  if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
-
-  const contentPath = path.resolve('./src/content/modules');
-  if (!fs.existsSync(contentPath)) fs.mkdirSync(contentPath, { recursive: true });
-
-  const finalModules = [];
-
-  for (const repo of modules) {
-    // Flatten edges first
-    if (repo.collaborators && repo.collaborators.edges) {
-      repo.collaborators = repo.collaborators.edges.map((e: any) => e.node);
-    }
-    if (repo.releases && repo.releases.edges) {
-      repo.releases = repo.releases.edges.map((e: any) => e.node);
-      repo.releases.forEach((release: any) => {
-        if (release.releaseAssets && release.releaseAssets.edges) {
-          release.releaseAssets = release.releaseAssets.edges.map((e: any) => e.node);
-        }
-      });
+    // Convert to modules
+    let modules: ModuleJson[] = [];
+    for (const { node } of mergedRepositories) {
+      const module = convert2json(node);
+      if (module) modules.push(module);
     }
 
-    // Generate final authors array
-    let authors = [];
-    const collaborators = repo.collaborators || [];
-    const additionalAuthors = repo.additionalAuthors || [];
-
-    // Check if there are any 'remove' operations
-    const authorsToRemove = new Set(
-      additionalAuthors
-        .filter((a: any) => a.type === 'remove')
-        .map((a: any) => a.name)
-    );
-
-    // Start with collaborators, excluding removed ones if any
-    if (authorsToRemove.size > 0) {
-      authors = collaborators.filter(
-        (c: any) => !authorsToRemove.has(c.name) && !authorsToRemove.has(c.login)
+    // Sort by latest release time
+    modules.sort((a, b) => {
+      const aTime = Math.max(
+        Date.parse(a.latestReleaseTime),
+        Date.parse(a.latestBetaReleaseTime),
+        Date.parse(a.latestSnapshotReleaseTime)
       );
-    } else {
-      authors = [...collaborators];
-    }
+      const bTime = Math.max(
+        Date.parse(b.latestReleaseTime),
+        Date.parse(b.latestBetaReleaseTime),
+        Date.parse(b.latestSnapshotReleaseTime)
+      );
+      return bTime - aTime;
+    });
 
-    // Add 'add' type authors from additionalAuthors
-    const addAuthors = additionalAuthors
-      .filter((a: any) => a.type === 'add' || !a.type)
-      .map((a: any) => ({
-        name: a.name,
-        link: a.link
-      }));
-
-    // Deduplicate: only add if not already in authors
-    const existingNames = new Set(authors.map((a: any) => a.name || a.login));
-    for (const author of addAuthors) {
-      if (!existingNames.has(author.name)) {
-        authors.push(author);
-        existingNames.add(author.name);
-      }
-    }
-
-    // Normalize author format: ensure all have { name, link }
-    repo.authors = authors.map((a: any) => ({
-      name: a.name || a.login,
-      link: a.link || `https://github.com/${a.login}`
-    }));
-
-    // Remove old fields
-    delete repo.collaborators;
-    delete repo.additionalAuthors;
-
-    const modulePath = path.join(rootPath, 'module');
-    if (!fs.existsSync(modulePath)) fs.mkdirSync(modulePath, { recursive: true });
-
-    const latestRelease = repo.latestRelease;
-    const latestBetaRelease = repo.latestBetaRelease;
-    const latestSnapshotRelease = repo.latestSnapshotRelease;
-
-    // Prepare repo object for individual JSON (Full releases list)
-    const repoForJson = JSON.parse(JSON.stringify(repo));
-
-    repoForJson.latestRelease = latestRelease ? latestRelease.tagName : undefined;
-    repoForJson.latestBetaRelease = latestBetaRelease && repoForJson.latestRelease !== latestBetaRelease.tagName ? latestBetaRelease.tagName : undefined;
-    repoForJson.latestSnapshotRelease = latestSnapshotRelease && repoForJson.latestBetaRelease !== latestSnapshotRelease.tagName && repoForJson.latestRelease !== latestSnapshotRelease.tagName ? latestSnapshotRelease.tagName : undefined;
-
-    fs.writeFileSync(`${modulePath}/${repo.moduleId}.json`, stringifyWithModuleIdFirst(repoForJson, 2));
-    // Also write to src/content/modules for Astro Content Collections
-    fs.writeFileSync(`${contentPath}/${repo.moduleId}.json`, stringifyWithModuleIdFirst(repoForJson, 2));
-
-    // Prepare repo object for modules.json list (Single release in array)
-    // Modify repo in place for the list
-    repo.latestRelease = latestRelease ? latestRelease.tagName : undefined;
-    repo.latestBetaRelease = latestBetaRelease && repo.latestRelease !== latestBetaRelease.tagName ? latestBetaRelease.tagName : undefined;
-    repo.latestSnapshotRelease = latestSnapshotRelease && repo.latestBetaRelease !== latestSnapshotRelease.tagName && repo.latestRelease !== latestSnapshotRelease.tagName ? latestSnapshotRelease.tagName : undefined;
-
-    repo.releases = latestRelease ? [latestRelease] : [];
-    if (repo.latestBetaRelease) {
-      repo.betaReleases = [latestBetaRelease];
-    }
-    if (repo.latestSnapshotRelease) {
-      repo.snapshotReleases = [latestSnapshotRelease];
-    }
-
-    // Clean up
-    delete repo.readme;
-    delete repo.readmeHTML;
-    delete repo.moduleJson;
-    delete repo.childGitHubReadme;
-
-    finalModules.push(repo);
+    fs.writeFileSync(modulesCachePath, JSON.stringify(modules));
+    console.log(`Generated ${modules.length} modules`);
   }
-
-  fs.writeFileSync(`${rootPath}/modules.json`, stringifyWithModuleIdFirst(finalModules, 2));
-
-  // Generate lightweight search index
-  const searchIndex = finalModules.map(m => ({
-    moduleId: m.moduleId,
-    moduleName: m.moduleName,
-    summary: m.summary,
-    authors: (m.authors?.map((a: any) => a.name) || []).join(' '),
-    url: `/module/${m.moduleId}`
-  }));
-  fs.writeFileSync(`${rootPath}/search-index.json`, JSON.stringify(searchIndex));
-
-  console.log(`Generated ${finalModules.length} modules and search index.`);
 }
 
 main().catch(console.error);

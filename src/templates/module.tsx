@@ -44,7 +44,6 @@ query ($name: String!) {
     readmeHTML
     summary
     sourceUrl
-    hide
     additionalAuthors {
       name
       link

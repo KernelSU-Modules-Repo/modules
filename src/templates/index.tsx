@@ -83,7 +83,7 @@ export const query = graphql`query ($skip: Int!, $limit: Int!) {
   allGithubRepository(
     skip: $skip
     limit: $limit
-    filter: {isModule: {eq: true}, hide: {eq: false}}
+    filter: {isModule: {eq: true}}
     sort: [ { latestReleaseTime: DESC }, { latestBetaReleaseTime: DESC } ]
   ) {
     edges {
@@ -103,7 +103,6 @@ export const query = graphql`query ($skip: Int!, $limit: Int!) {
         readme
         summary
         sourceUrl
-        hide
         additionalAuthors {
           name
           link

@@ -40,7 +40,7 @@ module.exports = {
         engineOptions: flexsearchConfig,
         query: `
 {
-  allGithubRepository(filter: {isModule: {eq: true}, hide: {eq: false}}) {
+  allGithubRepository(filter: {isModule: {eq: true}}) {
     edges {
       node {
         name

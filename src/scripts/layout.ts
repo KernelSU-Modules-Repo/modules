@@ -109,34 +109,9 @@ const setupSearch = () => {
 	});
 };
 
-const setupThemeToggle = () => {
-	const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
-	const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
-	const themeToggleBtn = document.getElementById('theme-toggle');
-
-	if (!(themeToggleBtn instanceof HTMLButtonElement)) {
-		return;
-	}
-
-	const setIcons = (isDark: boolean) => {
-		if (themeToggleDarkIcon) {
-			themeToggleDarkIcon.classList.toggle('hidden', isDark);
-		}
-		if (themeToggleLightIcon) {
-			themeToggleLightIcon.classList.toggle('hidden', !isDark);
-		}
-	};
-
-	setIcons(document.documentElement.classList.contains('dark'));
-
-	themeToggleBtn.addEventListener('click', () => {
-		const isDark = document.documentElement.classList.toggle('dark');
-		localStorage.setItem('theme', isDark ? 'dark' : 'light');
-		setIcons(isDark);
-	});
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-	setupThemeToggle();
+// Initialize search
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', setupSearch);
+} else {
 	setupSearch();
-});
+}

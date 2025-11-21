@@ -128,4 +128,24 @@ const { title = 'KernelSU Modules', description = 'A repository for KernelSU mod
 
 <script>
 	import '../scripts/layout.ts';
+
+	// Theme toggle - inline for reliability
+	const themeToggleBtn = document.getElementById('theme-toggle');
+	const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+	const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+
+	const updateIcons = () => {
+		const isDark = document.documentElement.classList.contains('dark');
+		themeToggleDarkIcon?.classList.toggle('hidden', isDark);
+		themeToggleLightIcon?.classList.toggle('hidden', !isDark);
+	};
+
+	updateIcons();
+
+	themeToggleBtn?.addEventListener('click', () => {
+		document.documentElement.classList.toggle('dark');
+		const isDark = document.documentElement.classList.contains('dark');
+		localStorage.setItem('theme', isDark ? 'dark' : 'light');
+		updateIcons();
+	});
 </script>

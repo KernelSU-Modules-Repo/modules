@@ -325,6 +325,14 @@ function parseRepositoryObject(repo) {
       repo.latestSnapshotRelease.isLatestSnapshot = true
     }
   }
+  if (!repo.isModule) {
+    console.log(`Repo ${repo.name} rejected. Reasons:`)
+    console.log(`  - Name pattern match: ${!!repo.name.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/)}`)
+    console.log(`  - Has description: ${!!repo.description}`)
+    console.log(`  - Has releases: ${!!repo.releases}`)
+    console.log(`  - Releases count: ${repo.releases?.edges?.length || 0}`)
+    console.log(`  - Not excluded: ${!['.github', 'submission', 'developers', 'modules'].includes(repo.name)}`)
+  }
   console.log(`Got repo: ${repo.name}, is module: ${repo.isModule}`)
   return repo
 }
@@ -639,6 +647,13 @@ exports.onPostBuild = async ({ graphql }) => {
     }
   }
 }`)
+  if (!result.data || !result.data.allGithubRepository) {
+    console.error('Failed to fetch repository data in onPostBuild')
+    if (result.errors) {
+      console.error('GraphQL errors:', result.errors)
+    }
+    return
+  }
   const rootPath = './public'
   if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true })
   flatten(result)

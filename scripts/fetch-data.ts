@@ -24,6 +24,17 @@ const client = new GraphQLClient('https://api.github.com/graphql', {
   },
 });
 
+// Custom JSON stringify that puts moduleId first
+function stringifyWithModuleIdFirst(obj: any, space?: number): string {
+  return JSON.stringify(obj, (key, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value) && value.moduleId) {
+      const { moduleId, moduleName, ...rest } = value;
+      return { moduleId, moduleName, ...rest };
+    }
+    return value;
+  }, space);
+}
+
 const makeRepositoryQuery = (name: string) => gql`
 {
   repository(owner: "KernelSU-Modules-Repo", name: "${name}") {
@@ -220,6 +231,16 @@ function replacePrivateImage(markdown: string, html: string) {
 }
 
 function parseRepositoryObject(repo: any) {
+  // Rename name to moduleId and description to moduleName at the earliest stage
+  if (repo.name) {
+    repo.moduleId = repo.name;
+    delete repo.name;
+  }
+  if (repo.description) {
+    repo.moduleName = repo.description;
+    delete repo.description;
+  }
+
   // Process module.json
   if (repo.moduleJson) {
     try {
@@ -235,15 +256,8 @@ function parseRepositoryObject(repo: any) {
 
       if (moduleData.additionalAuthors instanceof Array) {
         const validAuthors = [];
-        const authorsToRemove = new Set<string>();
-
         for (const author of moduleData.additionalAuthors) {
           if (author && typeof author === 'object') {
-            if (author.type === 'remove' && author.name) {
-              authorsToRemove.add(author.name);
-              continue;
-            }
-
             const validAuthor: any = {};
             for (const key of Object.keys(author)) {
               if (['type', 'name', 'link'].includes(key)) {
@@ -254,16 +268,9 @@ function parseRepositoryObject(repo: any) {
           }
         }
         repo.additionalAuthors = validAuthors;
-
-        // Filter out removed authors from collaborators
-        if (repo.collaborators && repo.collaborators.edges) {
-          repo.collaborators.edges = repo.collaborators.edges.filter(({ node }: any) =>
-            !authorsToRemove.has(node.login) && !authorsToRemove.has(node.name)
-          );
-        }
       }
     } catch (e: any) {
-      console.log(`Failed to parse module.json for ${repo.name}: ${e.message}`);
+      console.log(`Failed to parse module.json for ${repo.moduleId}: ${e.message}`);
     }
   }
 
@@ -289,11 +296,11 @@ function parseRepositoryObject(repo: any) {
           .some(({ node: { contentType } }: any) => contentType === 'application/zip'));
   }
 
-  repo.isModule = !!(repo.name.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/) &&
-    repo.description &&
+  repo.isModule = !!(repo.moduleId.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/) &&
+    repo.moduleName &&
     repo.releases &&
     repo.releases.edges.length &&
-    !['.github', 'submission', 'developers', 'modules'].includes(repo.name));
+    !['.github', 'submission', 'developers', 'modules'].includes(repo.moduleId));
 
   if (repo.isModule) {
     for (const release of repo.releases.edges) {
@@ -425,25 +432,53 @@ async function main() {
       });
     }
 
-    // Deduplicate authors
-    // 1. Filter out 'remove' types from collaborators
-    // 2. Remove duplicates from additionalAuthors if they are already in collaborators
-    if (repo.additionalAuthors) {
-      const authorsToRemove = new Set(repo.additionalAuthors.filter((a: any) => a.type === 'remove').map((a: any) => a.name));
+    // Generate final authors array
+    let authors = [];
+    const collaborators = repo.collaborators || [];
+    const additionalAuthors = repo.additionalAuthors || [];
 
-      if (repo.collaborators) {
-        repo.collaborators = repo.collaborators.filter((c: any) => !authorsToRemove.has(c.name) && !authorsToRemove.has(c.login));
-      }
+    // Check if there are any 'remove' operations
+    const authorsToRemove = new Set(
+      additionalAuthors
+        .filter((a: any) => a.type === 'remove')
+        .map((a: any) => a.name)
+    );
 
-      // Filter additionalAuthors to only keep 'add' (or undefined type) and remove duplicates
-      const existingNames = new Set(repo.collaborators ? repo.collaborators.map((c: any) => c.name || c.login) : []);
-      repo.additionalAuthors = repo.additionalAuthors.filter((a: any) => {
-        if (a.type === 'remove') return false;
-        if (existingNames.has(a.name)) return false;
-        existingNames.add(a.name);
-        return true;
-      });
+    // Start with collaborators, excluding removed ones if any
+    if (authorsToRemove.size > 0) {
+      authors = collaborators.filter(
+        (c: any) => !authorsToRemove.has(c.name) && !authorsToRemove.has(c.login)
+      );
+    } else {
+      authors = [...collaborators];
     }
+
+    // Add 'add' type authors from additionalAuthors
+    const addAuthors = additionalAuthors
+      .filter((a: any) => a.type === 'add' || !a.type)
+      .map((a: any) => ({
+        name: a.name,
+        link: a.link
+      }));
+
+    // Deduplicate: only add if not already in authors
+    const existingNames = new Set(authors.map((a: any) => a.name || a.login));
+    for (const author of addAuthors) {
+      if (!existingNames.has(author.name)) {
+        authors.push(author);
+        existingNames.add(author.name);
+      }
+    }
+
+    // Normalize author format: ensure all have { name, link }
+    repo.authors = authors.map((a: any) => ({
+      name: a.name || a.login,
+      link: a.link || `https://github.com/${a.login}`
+    }));
+
+    // Remove old fields
+    delete repo.collaborators;
+    delete repo.additionalAuthors;
 
     const modulePath = path.join(rootPath, 'module');
     if (!fs.existsSync(modulePath)) fs.mkdirSync(modulePath, { recursive: true });
@@ -459,9 +494,9 @@ async function main() {
     repoForJson.latestBetaRelease = latestBetaRelease && repoForJson.latestRelease !== latestBetaRelease.tagName ? latestBetaRelease.tagName : undefined;
     repoForJson.latestSnapshotRelease = latestSnapshotRelease && repoForJson.latestBetaRelease !== latestSnapshotRelease.tagName && repoForJson.latestRelease !== latestSnapshotRelease.tagName ? latestSnapshotRelease.tagName : undefined;
 
-    fs.writeFileSync(`${modulePath}/${repo.name}.json`, JSON.stringify(repoForJson, null, 2));
+    fs.writeFileSync(`${modulePath}/${repo.moduleId}.json`, stringifyWithModuleIdFirst(repoForJson, 2));
     // Also write to src/content/modules for Astro Content Collections
-    fs.writeFileSync(`${contentPath}/${repo.name}.json`, JSON.stringify(repoForJson, null, 2));
+    fs.writeFileSync(`${contentPath}/${repo.moduleId}.json`, stringifyWithModuleIdFirst(repoForJson, 2));
 
     // Prepare repo object for modules.json list (Single release in array)
     // Modify repo in place for the list
@@ -479,24 +514,22 @@ async function main() {
 
     // Clean up
     delete repo.readme;
+    delete repo.readmeHTML;
     delete repo.moduleJson;
     delete repo.childGitHubReadme;
 
     finalModules.push(repo);
   }
 
-  fs.writeFileSync(`${rootPath}/modules.json`, JSON.stringify(finalModules, null, 2));
+  fs.writeFileSync(`${rootPath}/modules.json`, stringifyWithModuleIdFirst(finalModules, 2));
 
   // Generate lightweight search index
   const searchIndex = finalModules.map(m => ({
-    name: m.name,
-    description: m.description,
+    moduleId: m.moduleId,
+    moduleName: m.moduleName,
     summary: m.summary,
-    authors: [
-      ...(m.collaborators?.map((c: any) => c.name || c.login) || []),
-      ...(m.additionalAuthors?.map((a: any) => a.name) || [])
-    ].join(' '),
-    url: `/module/${m.name}`
+    authors: (m.authors?.map((a: any) => a.name) || []).join(' '),
+    url: `/module/${m.moduleId}`
   }));
   fs.writeFileSync(`${rootPath}/search-index.json`, JSON.stringify(searchIndex));
 

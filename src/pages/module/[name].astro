@@ -1,31 +1,38 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getCollection } from 'astro:content';
+import fs from 'fs';
+import path from 'path';
 
 export async function getStaticPaths() {
   const modules = await getCollection('modules');
   return modules.map(module => ({
-    params: { name: module.data.name },
+    params: { name: module.data.moduleId },
     props: { module: module.data },
   }));
 }
 
 const { module } = Astro.props;
 
-const displayName = module.name;
-const description = module.description || "No description provided.";
-const readmeHTML = module.readmeHTML || "";
+const displayName = module.moduleName || module.moduleId;
+const description = module.summary || module.moduleName || "No description provided.";
 
-const authors = [];
-if (module.additionalAuthors) {
-    authors.push(...module.additionalAuthors.map(a => a.name));
-}
-if (module.collaborators && module.collaborators.length > 0) {
-    authors.push(...module.collaborators.map(c => c.name || c.login));
-}
+const authors = module.authors || [];
 
 const latestRelease = module.releases && module.releases.length > 0 ? module.releases[0] : null;
-const sourceUrl = module.sourceUrl || `https://github.com/KernelSU-Modules-Repo/${module.name}`;
+const sourceUrl = module.sourceUrl || `https://github.com/KernelSU-Modules-Repo/${module.moduleId}`;
+
+// Read README from public/module/{moduleId}.json at build time
+let readmeHTML = '';
+try {
+  const modulePath = path.join(process.cwd(), 'public', 'module', `${module.moduleId}.json`);
+  if (fs.existsSync(modulePath)) {
+    const fullModuleData = JSON.parse(fs.readFileSync(modulePath, 'utf-8'));
+    readmeHTML = fullModuleData.readmeHTML || '';
+  }
+} catch (e) {
+  console.error(`Failed to read module data for ${module.moduleId}:`, e);
+}
 ---
 
 <Layout title={`${displayName} - KernelSU Modules`} description={description}>
@@ -35,10 +42,10 @@ const sourceUrl = module.sourceUrl || `https://github.com/KernelSU-Modules-Repo/
             <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400 mb-4">
                 <a href="/" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Modules</a>
                 <span>/</span>
-                <span class="text-gray-900 dark:text-slate-200 truncate">{module.name}</span>
+                <span class="text-gray-900 dark:text-slate-200 truncate">{module.moduleId}</span>
             </div>
-            <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">{module.name}</h1>
-            <p class="text-lg text-gray-600 dark:text-slate-400 max-w-3xl leading-relaxed">{module.description}</p>
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">{displayName}</h1>
+            <p class="text-lg text-gray-600 dark:text-slate-400 max-w-3xl leading-relaxed">{description}</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -124,21 +131,26 @@ const sourceUrl = module.sourceUrl || `https://github.com/KernelSU-Modules-Repo/
                             <div>
                                 <div class="text-xs text-gray-500 dark:text-slate-500 mb-1">Module ID</div>
                                 <div class="font-mono text-sm text-gray-900 dark:text-slate-200 bg-gray-100 dark:bg-slate-950/50 px-2 py-1 rounded border border-gray-200 dark:border-slate-800 inline-block break-all">
-                                    {module.name}
+                                    {module.moduleId}
                                 </div>
                             </div>
 
-                            <div>
-                                <div class="text-xs text-gray-500 dark:text-slate-500 mb-1">Authors</div>
-                                <div class="flex flex-wrap gap-2">
-                                    {authors.map(author => (
-                                        <a href={`https://github.com/${author}`} target="_blank" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                            <img src={`https://github.com/${author}.png?size=32`} alt={author} class="w-4 h-4 rounded-full" />
-                                            {author}
-                                        </a>
-                                    ))}
+                            {authors.length > 0 && (
+                                <div>
+                                    <div class="text-xs text-gray-500 dark:text-slate-500 mb-1">Authors</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        {authors.map(author => (
+                                            <a 
+                                                href={author.link || `https://github.com/${author.name}`} 
+                                                target="_blank" 
+                                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                            >
+                                                {author.name}
+                                            </a>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             <div class="pt-4 border-t border-gray-100 dark:border-slate-800">
                                 <div class="grid grid-cols-2 gap-4">

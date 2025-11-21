@@ -3,13 +3,12 @@ import { defineCollection, z } from 'astro:content';
 const modulesCollection = defineCollection({
     type: 'data',
     schema: z.object({
-        name: z.string(),
-        description: z.string().optional().nullable(),
+        moduleId: z.string(),
+        moduleName: z.string().optional().nullable(),
         url: z.string(),
         homepageUrl: z.string().optional().nullable(),
         sourceUrl: z.string().optional().nullable(),
         summary: z.string().optional().nullable(),
-        readmeHTML: z.string().optional().nullable(),
         latestRelease: z.string().optional().nullable(),
         latestBetaRelease: z.string().optional().nullable(),
         latestSnapshotRelease: z.string().optional().nullable(),
@@ -17,14 +16,9 @@ const modulesCollection = defineCollection({
         latestBetaReleaseTime: z.string().optional().nullable(),
         latestSnapshotReleaseTime: z.string().optional().nullable(),
         stargazerCount: z.number().optional().nullable(),
-        collaborators: z.array(z.object({
-            name: z.string().optional().nullable(),
-            login: z.string()
-        })).optional().nullable(),
-        additionalAuthors: z.array(z.object({
-            name: z.string().optional().nullable(),
-            link: z.string().optional().nullable(),
-            type: z.string().optional().nullable()
+        authors: z.array(z.object({
+            name: z.string(),
+            link: z.string().optional().nullable()
         })).optional().nullable(),
         releases: z.array(z.object({
             tagName: z.string(),

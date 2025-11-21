@@ -7,20 +7,11 @@ interface Props {
 
 const { module } = Astro.props;
 
-const displayName = module.name;
-const description = module.summary || module.description || "No description provided.";
-const author = module.owner || "Unknown"; // Wait, schema doesn't have owner directly, it has collaborators.
-// Let's check schema. collaborators is array.
-// We can use the first collaborator or additionalAuthors.
+const displayName = module.moduleName || module.moduleId;
+const description = module.summary || module.moduleName || "No description provided.";
 
-const authors = [];
-if (module.additionalAuthors) {
-    authors.push(...module.additionalAuthors.map(a => a.name));
-}
-if (module.collaborators && module.collaborators.length > 0) {
-    authors.push(...module.collaborators.map(c => c.name || c.login));
-}
-const authorString = authors.slice(0, 2).join(', ') + (authors.length > 2 ? '...' : '');
+const authors = module.authors || [];
+const authorString = authors.slice(0, 2).map(a => a.name).join(', ') + (authors.length > 2 ? '...' : '');
 
 const latestVersion = module.latestRelease || module.latestBetaRelease || module.latestSnapshotRelease;
 const updatedAtValue = (module as { updatedAt?: string | Date | null }).updatedAt;
@@ -34,7 +25,7 @@ const formattedUpdatedAt = updatedAtDate && !Number.isNaN(updatedAtDate.valueOf(
     : null;
 ---
 
-<a href={`/module/${module.name}`} class="group relative flex flex-col rounded-2xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 hover:border-blue-500/50 hover:bg-gray-50 dark:hover:bg-slate-900 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300">
+<a href={`/module/${module.moduleId}`} class="group relative flex flex-col rounded-2xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 hover:border-blue-500/50 hover:bg-gray-50 dark:hover:bg-slate-900 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300">
     <div class="flex items-start justify-between mb-4 gap-4">
         <div class="flex-1 min-w-0">
             <h3 class="text-xl font-bold text-gray-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">

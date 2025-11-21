@@ -29,22 +29,7 @@ function makeRepositoryQuery(name) {
         text
       }
     }
-    summary: object(expression: "HEAD:SUMMARY") {
-      ... on Blob {
-        text
-      }
-    }
-    sourceUrl: object(expression: "HEAD:SOURCE_URL") {
-      ... on Blob {
-        text
-      }
-    }
-    hide: object(expression: "HEAD:HIDE") {
-      ... on Blob {
-        text
-      }
-    }
-    additionalAuthors: object(expression: "HEAD:ADDITIONAL_AUTHORS") {
+    moduleJson: object(expression: "HEAD:module.json") {
       ... on Blob {
         text
       }
@@ -135,22 +120,7 @@ function makeRepositoriesQuery(cursor) {
               text
             }
           }
-          summary: object(expression: "HEAD:SUMMARY") {
-            ... on Blob {
-              text
-            }
-          }
-          sourceUrl: object(expression: "HEAD:SOURCE_URL") {
-            ... on Blob {
-              text
-            }
-          }
-          hide: object(expression: "HEAD:HIDE") {
-            ... on Blob {
-              text
-            }
-          }
-          additionalAuthors: object(expression: "HEAD:ADDITIONAL_AUTHORS") {
+          moduleJson: object(expression: "HEAD:module.json") {
             ... on Blob {
               text
             }
@@ -246,23 +216,26 @@ const generateGatsbyNode = (result, createNode) => {
 }
 
 function parseRepositoryObject(repo) {
-  if (repo.summary) {
-    repo.summary = ellipsize(repo.summary.text.trim(), 512).trim()
-  }
-  if (repo.readme) {
-    repo.readme = repo.readme.text
-  }
-  if (repo.sourceUrl) {
-    repo.sourceUrl = repo.sourceUrl.text.replace(/[\r\n]/g, '').trim()
-  }
-  if (repo.additionalAuthors) {
+  // 处理 module.json
+  if (repo.moduleJson) {
     try {
-      const additionalAuthors = JSON.parse(repo.additionalAuthors.text)
-      const validAuthors = []
-      if (additionalAuthors instanceof Array) {
-        for (const author of additionalAuthors) {
+      const moduleData = JSON.parse(repo.moduleJson.text)
+
+      // 只提取支持的字段: summary, sourceUrl, additionalAuthors
+      if (moduleData.summary && typeof moduleData.summary === 'string') {
+        repo.summary = ellipsize(moduleData.summary.trim(), 512).trim()
+      }
+
+      if (moduleData.sourceUrl && typeof moduleData.sourceUrl === 'string') {
+        repo.sourceUrl = moduleData.sourceUrl.replace(/[\r\n]/g, '').trim()
+      }
+
+      if (moduleData.additionalAuthors instanceof Array) {
+        const validAuthors = []
+        for (const author of moduleData.additionalAuthors) {
           if (author && typeof author === 'object') {
             const validAuthor = {}
+            // 只提取支持的字段: type, name, link
             for (const key of Object.keys(author)) {
               if (['type', 'name', 'link'].includes(key)) {
                 validAuthor[key] = author[key]
@@ -271,12 +244,17 @@ function parseRepositoryObject(repo) {
             validAuthors.push(validAuthor)
           }
         }
+        repo.additionalAuthors = validAuthors
       }
-      repo.additionalAuthors = validAuthors
     } catch (e) {
-      repo.additionalAuthors = null
+      console.log(`Failed to parse module.json for ${repo.name}: ${e.message}`)
     }
   }
+
+  if (repo.readme) {
+    repo.readme = repo.readme.text
+  }
+
   if (repo.scope) {
     try {
       repo.scope = JSON.parse(repo.scope.text)
@@ -284,7 +262,6 @@ function parseRepositoryObject(repo) {
       repo.scope = null
     }
   }
-  repo.hide = !!repo.hide
   if (repo.releases) {
     if (repo.latestRelease) {
       repo.releases.edges = [{ node: repo.latestRelease }, ...repo.releases.edges]
@@ -452,7 +429,7 @@ exports.createPages = async ({ graphql, actions }) => {
   const { createPage } = actions
   const indexPageResult = await graphql(`
 {
-  allGithubRepository(limit: 30, filter: {isModule: {eq: true}, hide: {eq: false}}) {
+  allGithubRepository(limit: 30, filter: {isModule: {eq: true}}) {
     pageInfo {
       pageCount
       perPage
@@ -514,7 +491,7 @@ function flatten(object) {
 exports.onPostBuild = async ({ graphql }) => {
   const result = await graphql(`
 {
-  allGithubRepository(filter: {isModule: {eq: true}, hide: {eq: false}}) {
+  allGithubRepository(filter: {isModule: {eq: true}}) {
     edges {
       node {
         name
@@ -634,7 +611,6 @@ exports.onPostBuild = async ({ graphql }) => {
         summary
         scope
         sourceUrl
-        hide
         additionalAuthors {
           type
           name

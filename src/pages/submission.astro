@@ -1,0 +1,124 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Submit Module - KernelSU Modules">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="bg-white dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-xl p-8 backdrop-blur-sm">
+            <div class="mb-8 text-center">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-slate-100 mb-3 tracking-tight">Submit a Module</h1>
+                <p class="text-gray-600 dark:text-slate-400">
+                    Submit your module to the repository by creating a GitHub issue.
+                </p>
+            </div>
+
+            <form id="submission-form" class="space-y-6">
+                <div>
+                    <label for="submission-type" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Submission Type</label>
+                    <select id="submission-type" name="type" class="block w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-gray-900 dark:text-slate-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2.5 px-3">
+                        <option value="new">New Module</option>
+                        <option value="update">Update Module</option>
+                    </select>
+                </div>
+
+                <div id="module-id-group">
+                    <label for="module-id" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Module ID</label>
+                    <input type="text" id="module-id" name="id" placeholder="e.g. com.example.module" class="block w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-gray-900 dark:text-slate-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2.5 px-3 placeholder:text-gray-500 dark:placeholder:text-slate-600" />
+                    <p class="mt-2 text-xs text-gray-500 dark:text-slate-500">
+                        Must start with a letter and contain only letters, numbers, dots, underscores, or hyphens.
+                    </p>
+                </div>
+
+                <div id="module-title-group" class="hidden">
+                    <label for="module-title" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Module Name</label>
+                    <input type="text" id="module-title" name="title" placeholder="e.g. My Awesome Module" class="block w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-gray-900 dark:text-slate-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2.5 px-3 placeholder:text-gray-500 dark:placeholder:text-slate-600" />
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Description (Optional)</label>
+                    <textarea id="description" name="description" rows="3" class="block w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-gray-900 dark:text-slate-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2.5 px-3 placeholder:text-gray-500 dark:placeholder:text-slate-600" placeholder="Brief description of your submission..."></textarea>
+                </div>
+
+                <div class="pt-4">
+                    <button type="submit" id="submit-btn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-blue-500/20">
+                        Continue to GitHub
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</Layout>
+
+<script>
+    const form = document.getElementById('submission-form') as HTMLFormElement;
+    const typeSelect = document.getElementById('submission-type') as HTMLSelectElement;
+    const moduleIdGroup = document.getElementById('module-id-group');
+    const moduleTitleGroup = document.getElementById('module-title-group');
+    const moduleIdInput = document.getElementById('module-id') as HTMLInputElement;
+    const moduleTitleInput = document.getElementById('module-title') as HTMLInputElement;
+    const descriptionInput = document.getElementById('description') as HTMLTextAreaElement;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+
+    // Check URL params for initial type
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialType = urlParams.get('type');
+    if (initialType && ['new', 'update'].includes(initialType)) {
+        typeSelect.value = initialType;
+    }
+
+    function updateFormVisibility() {
+        const type = typeSelect.value;
+        if (type === 'new') {
+            moduleIdGroup.classList.remove('hidden');
+            moduleTitleGroup.classList.add('hidden');
+            moduleIdInput.required = true;
+            moduleTitleInput.required = false;
+        } else {
+            moduleIdGroup.classList.add('hidden');
+            moduleTitleGroup.classList.remove('hidden');
+            moduleIdInput.required = false;
+            moduleTitleInput.required = true;
+        }
+        validateForm();
+    }
+
+    function validateForm() {
+        const type = typeSelect.value;
+        let isValid = false;
+
+        if (type === 'new') {
+            const id = moduleIdInput.value.trim();
+            // Regex: Starts with letter, contains letters, numbers, ., _, -
+            const idRegex = /^[a-zA-Z][a-zA-Z0-9._-]*$/;
+            isValid = idRegex.test(id);
+        } else {
+            isValid = moduleTitleInput.value.trim().length > 0;
+        }
+
+        submitBtn.disabled = !isValid;
+    }
+
+    typeSelect.addEventListener('change', updateFormVisibility);
+    moduleIdInput.addEventListener('input', validateForm);
+    moduleTitleInput.addEventListener('input', validateForm);
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const type = typeSelect.value;
+        const showPackageName = ['submission', 'transfer', 'appeal'].includes(type);
+        const issueTitle = showPackageName
+            ? `[${type}] ${packageNameInput.value}`
+            : `[${type}] ${titleInput.value}`;
+        
+        const url = `https://github.com/KernelSU-Modules-Repo/submission/issues/new?title=${
+            encodeURIComponent(issueTitle)
+        }&body=${
+            encodeURIComponent(descriptionInput.value)
+        }`;
+        
+        window.open(url, '_blank');
+    });
+
+    // Initial check
+    updateFormVisibility();
+</script>

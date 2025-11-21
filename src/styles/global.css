@@ -1,0 +1,29 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-tech-bg: #0f172a;
+  --color-tech-card: #1e293b;
+  --color-tech-accent: #3b82f6;
+  --color-tech-text: #f8fafc;
+  --color-tech-muted: #94a3b8;
+}
+
+@layer base {
+  body {
+    @apply antialiased bg-slate-950 text-slate-50;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 rounded hover:bg-slate-600;
+  }
+}

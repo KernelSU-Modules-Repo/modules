@@ -1,0 +1,218 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const modules = await getCollection('modules');
+  return modules.map(module => ({
+    params: { name: module.data.name },
+    props: { module: module.data },
+  }));
+}
+
+const { module } = Astro.props;
+
+const displayName = module.name;
+const description = module.description || "No description provided.";
+const readmeHTML = module.readmeHTML || "";
+
+const authors = [];
+if (module.additionalAuthors) {
+    authors.push(...module.additionalAuthors.map(a => a.name));
+}
+if (module.collaborators && module.collaborators.length > 0) {
+    authors.push(...module.collaborators.map(c => c.name || c.login));
+}
+
+const latestRelease = module.releases && module.releases.length > 0 ? module.releases[0] : null;
+const sourceUrl = module.sourceUrl || `https://github.com/KernelSU-Modules-Repo/${module.name}`;
+---
+
+<Layout title={`${displayName} - KernelSU Modules`} description={description}>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Header */}
+        <div class="mb-8">
+            <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400 mb-4">
+                <a href="/" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Modules</a>
+                <span>/</span>
+                <span class="text-gray-900 dark:text-slate-200 truncate">{module.name}</span>
+            </div>
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">{module.name}</h1>
+            <p class="text-lg text-gray-600 dark:text-slate-400 max-w-3xl leading-relaxed">{module.description}</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            {/* Main Content: README & Releases */}
+            <div class="lg:col-span-3 space-y-12">
+                {/* README */}
+                <div class="bg-white dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-800 p-8 shadow-sm">
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        README
+                    </h2>
+                    <article class="prose prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-24 prose-a:text-blue-600 dark:prose-a:text-blue-400 hover:prose-a:text-blue-500 dark:hover:prose-a:text-blue-300 prose-img:rounded-xl">
+                        <Fragment set:html={readmeHTML} />
+                    </article>
+                </div>
+
+                {/* Releases History */}
+                <div class="space-y-6">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Release History
+                    </h2>
+                    {module.releases && module.releases.length > 0 ? (
+                        <div class="grid gap-4">
+                            {module.releases.map((release) => (
+                                <div class="bg-white dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-800 p-6 transition-all hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/5">
+                                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+                                        <div>
+                                            <div class="flex items-center gap-3 mb-1">
+                                                <h3 class="text-lg font-bold text-gray-900 dark:text-white">{release.tagName}</h3>
+                                                {release.isPrerelease && (
+                                                    <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border border-yellow-200 dark:border-yellow-500/20">
+                                                        Pre-release
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div class="text-sm text-gray-500 dark:text-slate-400 flex items-center gap-2">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                                Published on {new Date(release.publishedAt).toLocaleDateString(undefined, { dateStyle: 'long' })}
+                                            </div>
+                                        </div>
+                                        <a 
+                                            href={release.url}
+                                            target="_blank"
+                                            class="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+                                        >
+                                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                            Download
+                                        </a>
+                                    </div>
+                                    {release.descriptionHTML && (
+                                        <div class="prose prose-sm prose-slate dark:prose-invert max-w-none bg-gray-50 dark:bg-slate-950/50 rounded-lg p-4 border border-gray-100 dark:border-slate-800/50">
+                                            <Fragment set:html={release.descriptionHTML} />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div class="text-center py-12 bg-white dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-800">
+                            <p class="text-gray-500 dark:text-slate-400">No releases found for this module.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Sidebar: Details & Latest Release */}
+            <div class="lg:col-span-1">
+                <div class="sticky top-24 space-y-6">
+                    {/* Details Card */}
+                    <div class="bg-white dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 shadow-sm backdrop-blur-sm">
+                        <h3 class="text-sm font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-4">Module Details</h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <div class="text-xs text-gray-500 dark:text-slate-500 mb-1">Module ID</div>
+                                <div class="font-mono text-sm text-gray-900 dark:text-slate-200 bg-gray-100 dark:bg-slate-950/50 px-2 py-1 rounded border border-gray-200 dark:border-slate-800 inline-block break-all">
+                                    {module.name}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="text-xs text-gray-500 dark:text-slate-500 mb-1">Authors</div>
+                                <div class="flex flex-wrap gap-2">
+                                    {authors.map(author => (
+                                        <a href={`https://github.com/${author}`} target="_blank" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                            <img src={`https://github.com/${author}.png?size=32`} alt={author} class="w-4 h-4 rounded-full" />
+                                            {author}
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div class="pt-4 border-t border-gray-100 dark:border-slate-800">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="text-center p-3 bg-gray-50 dark:bg-slate-950/30 rounded-xl border border-gray-100 dark:border-slate-800/50">
+                                        <div class="text-2xl font-bold text-gray-900 dark:text-white">{module.stargazerCount}</div>
+                                        <div class="text-xs text-gray-500 dark:text-slate-500 font-medium">Stars</div>
+                                    </div>
+                                    <div class="text-center p-3 bg-gray-50 dark:bg-slate-950/30 rounded-xl border border-gray-100 dark:border-slate-800/50">
+                                        <div class="text-2xl font-bold text-gray-900 dark:text-white">{module.releases?.length || 0}</div>
+                                        <div class="text-xs text-gray-500 dark:text-slate-500 font-medium">Releases</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 space-y-3">
+                                {module.website && (
+                                    <a href={module.website} target="_blank" class="flex items-center justify-center w-full px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                                        </svg>
+                                        Website
+                                    </a>
+                                )}
+                                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" class="flex items-center justify-center w-full px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-gray-900 dark:bg-slate-700 hover:bg-gray-800 dark:hover:bg-slate-600 transition-colors">
+                                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                                        <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" />
+                                    </svg>
+                                    Source Code
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Latest Release Card (Small) */}
+                    {latestRelease && (
+                        <div class="bg-gradient-to-br from-blue-50 to-violet-50 dark:from-blue-900/20 dark:to-violet-900/20 rounded-2xl border border-blue-100 dark:border-blue-500/20 p-6 shadow-sm relative overflow-hidden group">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -mr-12 -mt-12 transition-all group-hover:bg-blue-500/20"></div>
+                            
+                            <div class="relative">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="text-sm font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wider">Latest Version</h3>
+                                    <span class="flex h-2 w-2">
+                                        <span class="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
+                                        <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                    </span>
+                                </div>
+                                <div class="text-3xl font-bold text-gray-900 dark:text-white mb-1">{latestRelease.tagName}</div>
+                                <div class="text-sm text-gray-500 dark:text-slate-400 mb-4">
+                                    Released {new Date(latestRelease.publishedAt).toLocaleDateString()}
+                                </div>
+                                <a href={latestRelease.url} target="_blank" class="block w-full text-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20">
+                                    Download Now
+                                </a>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    </div>
+</Layout>
+
+<style is:global>
+    /* Markdown Styles Override */
+    .prose img {
+        border-radius: 0.75rem;
+    }
+    .prose a {
+        text-decoration: none;
+    }
+    .prose a:hover {
+        text-decoration: underline;
+    }
+    .prose pre {
+        border-radius: 0.75rem;
+    }
+</style>

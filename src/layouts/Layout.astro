@@ -1,0 +1,228 @@
+---
+import '../styles/global.css';
+import Fuse from 'fuse.js';
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const { title = 'KernelSU Modules', description = 'A repository for KernelSU modules' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="description" content={description} />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{title}</title>
+		<script is:inline>
+			// Immediately set the theme to avoid flash of wrong color
+			const theme = (() => {
+				if (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) {
+					return localStorage.getItem('theme');
+				}
+				if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+					return 'dark';
+				}
+				return 'light';
+			})();
+		
+			if (theme === 'dark') {
+				document.documentElement.classList.add('dark');
+			} else {
+				document.documentElement.classList.remove('dark');
+			}
+		</script>
+	</head>
+	<body class="bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-slate-50 min-h-screen flex flex-col selection:bg-blue-500/30 selection:text-blue-600 dark:selection:text-blue-200">
+		<header class="sticky top-0 z-50 w-full border-b border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-slate-950/60">
+			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<div class="flex h-16 items-center justify-between">
+					<div class="flex items-center gap-8">
+						<a href="/" class="flex items-center gap-2 group">
+							<div class="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 text-white font-bold shadow-lg shadow-blue-500/20 transition-transform group-hover:scale-105">
+								K
+								<div class="absolute inset-0 rounded-lg ring-1 ring-black/5 dark:ring-white/20"></div>
+							</div>
+							<span class="hidden font-bold sm:inline-block text-lg tracking-tight text-gray-900 dark:text-slate-100">KernelSU <span class="text-blue-600 dark:text-blue-400">Modules</span></span>
+						</a>
+						<nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+							<a href="/" class="text-gray-600 dark:text-slate-400 transition-colors hover:text-blue-600 dark:hover:text-blue-400">Modules</a>
+							<a href="/submission" class="text-gray-600 dark:text-slate-400 transition-colors hover:text-blue-600 dark:hover:text-blue-400">Submit</a>
+						</nav>
+					</div>
+					<div class="flex items-center gap-4">
+						<div class="relative w-full max-w-sm md:w-64">
+							<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+								<svg class="h-4 w-4 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+								</svg>
+							</div>
+							<input
+								type="text"
+								id="search-input"
+								class="block w-full rounded-full border border-gray-200 dark:border-slate-800 bg-gray-100 dark:bg-slate-900/50 py-1.5 pl-10 pr-3 text-sm text-gray-900 dark:text-slate-200 placeholder:text-gray-500 dark:placeholder:text-slate-500 focus:border-blue-500 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+								placeholder="Search modules..."
+							/>
+							<div id="search-results" class="absolute right-0 top-full mt-2 w-96 origin-top-right rounded-xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 shadow-2xl shadow-black/10 dark:shadow-black/50 opacity-0 invisible transition-all duration-200 z-50 max-h-[80vh] overflow-y-auto">
+								<!-- Results injected here -->
+							</div>
+						</div>
+						
+						<button id="theme-toggle" type="button" class="text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-slate-700 rounded-lg text-sm p-2.5">
+							<svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+							<svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 100 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+						</button>
+
+						<a href="https://github.com/KernelSU-Modules-Repo" target="_blank" class="text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+							<span class="sr-only">GitHub</span>
+							<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+								<path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" />
+							</svg>
+						</a>
+					</div>
+				</div>
+			</div>
+		</header>
+		<main class="flex-1 relative">
+			<slot />
+		</main>
+		<footer class="border-t border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-8 mt-auto relative z-10">
+			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<div class="flex flex-col items-center justify-between gap-4 md:flex-row">
+					<p class="text-center text-sm text-gray-500 dark:text-slate-500 md:text-left">
+						&copy; {new Date().getFullYear()} KernelSU Modules Repo. All rights reserved.
+					</p>
+					<div class="flex gap-4 text-sm text-gray-500 dark:text-slate-500">
+						<a href="https://github.com/KernelSU-Modules-Repo" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">GitHub</a>
+						<a href="/submission" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Submit Module</a>
+					</div>
+				</div>
+			</div>
+		</footer>
+	</body>
+</html>
+
+<style is:global>
+	/* Custom scrollbar for Webkit */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background-color: rgba(156, 163, 175, 0.5);
+        border-radius: 20px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(107, 114, 128, 0.8);
+    }
+</style>
+
+<script>
+	import Fuse from 'fuse.js';
+
+	// Theme Toggle Logic
+	// Theme Toggle Logic
+	document.addEventListener('DOMContentLoaded', () => {
+		const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+		const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+		const themeToggleBtn = document.getElementById('theme-toggle');
+
+		// Change the icons inside the button based on current settings
+		if (document.documentElement.classList.contains('dark')) {
+			themeToggleLightIcon?.classList.remove('hidden');
+		} else {
+			themeToggleDarkIcon?.classList.remove('hidden');
+		}
+
+		themeToggleBtn?.addEventListener('click', function() {
+			// toggle icons inside button
+			themeToggleDarkIcon?.classList.toggle('hidden');
+			themeToggleLightIcon?.classList.toggle('hidden');
+
+			// if set via local storage previously
+			if (localStorage.getItem('theme')) {
+				if (localStorage.getItem('theme') === 'light') {
+					document.documentElement.classList.add('dark');
+					localStorage.setItem('theme', 'dark');
+				} else {
+					document.documentElement.classList.remove('dark');
+					localStorage.setItem('theme', 'light');
+				}
+			} else {
+				// if NOT set via local storage previously
+				if (document.documentElement.classList.contains('dark')) {
+					document.documentElement.classList.remove('dark');
+					localStorage.setItem('theme', 'light');
+				} else {
+					document.documentElement.classList.add('dark');
+					localStorage.setItem('theme', 'dark');
+				}
+			}
+		});
+	});
+
+	// Search Logic
+	let fuse;
+	const searchInput = document.getElementById('search-input') as HTMLInputElement;
+	const searchResults = document.getElementById('search-results');
+
+	async function initSearch() {
+		try {
+			const response = await fetch('/search-index.json');
+			const data = await response.json();
+			
+			fuse = new Fuse(data, {
+				keys: ['name', 'description', 'summary', 'authors'],
+				threshold: 0.4,
+				ignoreLocation: true
+			});
+		} catch (e) {
+			console.error('Failed to load search index', e);
+		}
+	}
+
+	initSearch();
+
+	searchInput?.addEventListener('input', (e) => {
+		const query = (e.target as HTMLInputElement).value;
+		if (!query || !fuse) {
+			searchResults.classList.add('opacity-0', 'invisible');
+			return;
+		}
+
+		const results = fuse.search(query).slice(0, 5);
+		
+		if (results.length > 0) {
+			searchResults.innerHTML = results.map(result => `
+				<a href="${result.item.url}" class="block p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group">
+					<div class="font-medium text-gray-900 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">${result.item.name}</div>
+					<div class="text-xs text-gray-500 dark:text-slate-500 line-clamp-1 mt-0.5">${result.item.description || result.item.summary}</div>
+				</a>
+			`).join('');
+			searchResults.classList.remove('opacity-0', 'invisible');
+		} else {
+			searchResults.innerHTML = `
+				<div class="p-4 text-center text-sm text-gray-500 dark:text-slate-500">
+					No modules found matching "${query}"
+				</div>
+			`;
+			searchResults.classList.remove('opacity-0', 'invisible');
+		}
+	});
+
+	// Close search when clicking outside
+	document.addEventListener('click', (e) => {
+		if (!searchInput.contains(e.target as Node) && !searchResults.contains(e.target as Node)) {
+			searchResults.classList.add('opacity-0', 'invisible');
+		}
+	});
+</script>

@@ -1,0 +1,56 @@
+---
+import Layout from '../layouts/Layout.astro';
+import RepoCard from '../components/RepoCard.astro';
+import { getCollection } from 'astro:content';
+
+const modules = await getCollection('modules');
+
+// Sort modules: Latest release time, then beta release time
+const sortedRepos = modules.sort((a, b) => {
+    const timeA = a.data.latestReleaseTime || a.data.latestBetaReleaseTime || '';
+    const timeB = b.data.latestReleaseTime || b.data.latestBetaReleaseTime || '';
+    return timeB.localeCompare(timeA);
+});
+
+// Pagination could be implemented here or in [page].astro
+// For now, let's show all, or limit to first 30 and add a "Load More" link to page 2 if we implement pagination pages.
+// But since we want to replicate existing behavior, let's just list them all for now or implement pagination properly.
+// Given the small number of modules in the example (1), it's hard to test pagination.
+// But let's assume we want to show all for simplicity in this first pass, or implement a simple client-side filter.
+---
+
+<Layout title="KernelSU Modules - Discover & Download">
+	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+		<div class="text-center mb-16">
+			<h1 class="text-4xl md:text-6xl font-bold mb-6 tracking-tight">
+				<span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-violet-600 to-indigo-600 dark:from-blue-400 dark:via-violet-400 dark:to-indigo-400">
+					Discover Modules
+				</span>
+				<br />
+				<span class="text-gray-900 dark:text-white">for KernelSU</span>
+			</h1>
+			<p class="text-lg text-gray-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+				Explore a curated collection of modules to enhance your device. 
+				Secure, open-source, and easy to install.
+			</p>
+		</div>
+
+		{sortedRepos.length > 0 ? (
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+				{sortedRepos.map((repo) => (
+					<RepoCard module={repo.data} />
+				))}
+			</div>
+		) : (
+			<div class="text-center py-20">
+				<div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-900 mb-4">
+					<svg class="w-8 h-8 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+					</svg>
+				</div>
+				<h3 class="text-lg font-medium text-gray-900 dark:text-white">No modules found</h3>
+				<p class="text-gray-500 dark:text-slate-400 mt-1">Check back later for new additions.</p>
+			</div>
+		)}
+	</div>
+</Layout>

@@ -255,13 +255,6 @@ function parseRepositoryObject(repo) {
     repo.readme = repo.readme.text
   }
 
-  if (repo.scope) {
-    try {
-      repo.scope = JSON.parse(repo.scope.text)
-    } catch (e) {
-      repo.scope = null
-    }
-  }
   if (repo.releases) {
     if (repo.latestRelease) {
       repo.releases.edges = [{ node: repo.latestRelease }, ...repo.releases.edges]
@@ -609,7 +602,6 @@ exports.onPostBuild = async ({ graphql }) => {
           }
         }
         summary
-        scope
         sourceUrl
         additionalAuthors {
           type

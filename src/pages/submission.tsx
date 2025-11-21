@@ -77,7 +77,7 @@ export default function SubmissionPage (): ReactElement {
   }
   const [packageName, setPackageName] = useState('')
   const isPackageNameValid = (): boolean => {
-      return packageName.match(/^[a-zA-Z_][a-zA-Z_0-9]*$/)
+      return packageName.match(/^[a-zA-Z][a-zA-Z0-9._-]*$/)
   }
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')

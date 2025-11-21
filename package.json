@@ -15,7 +15,6 @@
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
-    "@types/uuid": "^11.0.0",
     "astro": "^5.16.0",
     "ellipsize": "^0.7.0",
     "fuse.js": "^7.1.0",

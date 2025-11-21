@@ -40,7 +40,7 @@
                   "name": "meta-overlayfs-1-stable.zip",
                   "contentType": "application/zip",
                   "downloadUrl": "https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/download/1-stable/meta-overlayfs-1-stable.zip",
-                  "downloadCount": 18,
+                  "downloadCount": 25,
                   "size": 450261
                 }
               }
@@ -69,7 +69,7 @@
                         "name": "meta-overlayfs-1100.zip",
                         "contentType": "application/zip",
                         "downloadUrl": "https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/download/1100/meta-overlayfs-1100.zip",
-                        "downloadCount": 5,
+                        "downloadCount": 9,
                         "size": 450261
                       }
                     }
@@ -97,7 +97,7 @@
                         "name": "meta-overlayfs-1-stable.zip",
                         "contentType": "application/zip",
                         "downloadUrl": "https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/download/1-stable/meta-overlayfs-1-stable.zip",
-                        "downloadCount": 18,
+                        "downloadCount": 25,
                         "size": 450261
                       }
                     }
@@ -107,11 +107,11 @@
             }
           ]
         },
-        "updatedAt": "2025-11-21T09:23:02Z",
+        "updatedAt": "2025-11-21T12:17:29Z",
         "createdAt": "2025-11-21T04:35:16Z",
-        "stargazerCount": 11
+        "stargazerCount": 21
       },
-      "cursor": "Y3Vyc29yOnYyOpK5MjAyNS0xMS0yMVQxNzoyMzowMiswODowMM5BoDMf"
+      "cursor": "Y3Vyc29yOnYyOpK5MjAyNS0xMS0yMVQyMDoxNzoyOSswODowMM5BoDMf"
     },
     {
       "node": {
@@ -176,7 +176,7 @@
                   "name": "ksu_example_module-0.0.1.zip",
                   "contentType": "application/zip",
                   "downloadUrl": "https://github.com/KernelSU-Modules-Repo/org.kernelsu.example/releases/download/1-stable/ksu_example_module-0.0.1.zip",
-                  "downloadCount": 0,
+                  "downloadCount": 2,
                   "size": 4716
                 }
               }
@@ -205,7 +205,7 @@
                         "name": "ksu_example_module-0.0.1.zip",
                         "contentType": "application/zip",
                         "downloadUrl": "https://github.com/KernelSU-Modules-Repo/org.kernelsu.example/releases/download/1-stable/ksu_example_module-0.0.1.zip",
-                        "downloadCount": 0,
+                        "downloadCount": 2,
                         "size": 4716
                       }
                     }

@@ -44,6 +44,7 @@ jobs:
         run: |
           rm -rf .cache
           rm -rf dist
+          rm -rf .data-cache
           echo "Cleaned cache for full rebuild"
 
       - name: Restore .cache directory (incremental)
@@ -61,6 +62,14 @@ jobs:
           path: dist
           key: ${{ runner.os }}-astro-dist-${{ github.run_id }}
           restore-keys: ${{ runner.os }}-astro-dist-
+
+      - name: Restore .data-cache directory (incremental)
+        if: ${{ github.event.inputs.repo }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .data-cache
+          key: ${{ runner.os }}-data-cache-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-data-cache-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -87,6 +96,13 @@ jobs:
         with:
           path: dist
           key: ${{ runner.os }}-astro-dist-${{ github.run_id }}
+
+      - name: Save .data-cache directory
+        if: ${{ github.event.inputs.repo }}
+        uses: actions/cache/save@v4
+        with:
+          path: .data-cache
+          key: ${{ runner.os }}-data-cache-${{ github.run_id }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

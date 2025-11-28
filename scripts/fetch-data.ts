@@ -426,7 +426,7 @@ function convert2json(repo: GraphQlRepository): ModuleJson | null {
 }
 
 async function main() {
-  const cacheDir = path.resolve('.cache');
+  const cacheDir = path.resolve('.data-cache');
   const graphqlCachePath = path.join(cacheDir, 'graphql.json');
   const modulesCachePath = path.join(cacheDir, 'modules.json');
 

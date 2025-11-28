@@ -342,7 +342,7 @@ function convert2json(repo: GraphQlRepository): ModuleJson | null {
     repo.name.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/) &&
     repo.description &&
     releases.length &&
-    !['.github', 'submission', 'developers', 'modules'].includes(repo.name)
+    !['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example'].includes(repo.name)
   );
 
   if (!isModule) {

@@ -75,7 +75,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install runzip
-        run: cargo install runzip
+        run: |
+          wget -q -O /usr/local/bin/runzip https://github.com/Ylarod/runzip/releases/download/v0.1.7/runzip-x86_64-unknown-linux-gnu
+          chmod +x /usr/local/bin/runzip
 
       - name: Fetch module data
         run: bun run scripts/fetch-data.ts

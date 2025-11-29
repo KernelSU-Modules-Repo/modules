@@ -5,11 +5,29 @@ export const GET: APIRoute = () => {
   return new Response(
     JSON.stringify(
       modules.map((m: any) => {
-        // Return module with only the latest release download URL
-        const { readme, readmeHTML, releases, ...rest } = m;
+        // Return module with restructured latest release info
+        const {
+          readme,
+          readmeHTML,
+          releases,
+          latestRelease,
+          latestReleaseTime,
+          latestBetaReleaseTime,
+          latestSnapshotReleaseTime,
+          ...rest
+        } = m;
+
+        const newLatestRelease = (latestRelease || releases?.[0]) ? {
+          name: latestRelease || null,
+          time: latestReleaseTime || null,
+          version: releases?.[0]?.version || null,
+          versionCode: releases?.[0]?.versionCode || null,
+          downloadUrl: releases?.[0]?.releaseAssets?.[0]?.downloadUrl || null,
+        } : null;
+
         return {
           ...rest,
-          latestReleaseDownloadUrl: releases?.[0]?.releaseAssets?.[0]?.downloadUrl || null,
+          latestRelease: newLatestRelease,
         };
       })
     )

@@ -1,6 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import modules from '../../../.cache/modules.json';
+import modules from '../../../.data-cache/modules.json';
 
 export function getStaticPaths() {
   return modules.map((m: any) => ({
@@ -31,7 +31,14 @@ const readmeHTML = module.readmeHTML || '';
                 <span>/</span>
                 <span class="text-gray-900 dark:text-slate-200 truncate">{module.moduleId}</span>
             </div>
-            <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">{displayName}</h1>
+            <div class="flex items-center gap-3 mb-4">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white tracking-tight">{displayName}</h1>
+                {module.metamodule && (
+                    <span class="px-3 py-1 rounded-lg text-sm font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white border border-purple-400 dark:border-pink-400 shadow-lg flex-shrink-0">
+                        META
+                    </span>
+                )}
+            </div>
             <p class="text-lg text-gray-600 dark:text-slate-400 max-w-3xl leading-relaxed">{description}</p>
         </div>
 

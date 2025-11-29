@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import modules from "../../.cache/modules.json";
+import modules from "../../.data-cache/modules.json";
 
 export const GET: APIRoute = () => {
   const searchIndex = modules.map((m: any) => ({

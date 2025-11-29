@@ -29,9 +29,16 @@ const formattedUpdatedAt = updatedAtDate && !Number.isNaN(updatedAtDate.valueOf(
 <a href={`/module/${module.moduleId}`} class="group relative flex flex-col rounded-2xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 hover:border-blue-500/50 hover:bg-gray-50 dark:hover:bg-slate-900 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300">
     <div class="flex items-start justify-between mb-2 gap-4">
         <div class="flex-1 min-w-0">
-            <h3 class="text-xl font-bold text-gray-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                {displayName}
-            </h3>
+            <div class="flex items-center gap-2 mb-1">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    {displayName}
+                </h3>
+                {module.metamodule && (
+                    <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white border border-purple-400 dark:border-pink-400 shadow-sm flex-shrink-0">
+                        META
+                    </span>
+                )}
+            </div>
             <div class="text-sm text-gray-500 dark:text-slate-400 mt-1 space-y-0.5">
                 {displayAuthors.length > 0 && (
                     <div class="flex items-center gap-1 flex-wrap">

@@ -16,6 +16,7 @@ type ReleaseAsset = {
 type GraphQlRelease = {
   name: string;
   url: string;
+  immutable: boolean;
   isDraft: boolean;
   description: string;
   descriptionHTML: string;
@@ -139,6 +140,7 @@ const makeRepositoryQuery = (name: string) => gql`
     latestRelease {
       name
       url
+      immutable
       isDraft
       description
       descriptionHTML
@@ -164,6 +166,7 @@ const makeRepositoryQuery = (name: string) => gql`
         node {
           name
           url
+          immutable
           isDraft
           description
           descriptionHTML
@@ -227,6 +230,7 @@ const makeRepositoriesQuery = (cursor: string | null) => {
           latestRelease {
             name
             url
+            immutable
             isDraft
             description
             descriptionHTML
@@ -252,6 +256,7 @@ const makeRepositoriesQuery = (cursor: string | null) => {
               node {
                 name
                 url
+                immutable
                 isDraft
                 description
                 descriptionHTML
@@ -316,6 +321,7 @@ function convert2json(repo: GraphQlRepository): ModuleJson | null {
   const releases: ModuleRelease[] = repo.releases.edges
     .filter(({ node }) =>
       !node.isDraft &&
+      node.immutable &&
       node.tagName.match(/^\d+-.+$/) &&
       node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
     )

@@ -7,6 +7,9 @@ export const GET: APIRoute = () => {
       modules.map((m: any) => {
         // Return module with restructured latest release info
         const {
+          url,
+          homepageUrl,
+          sourceUrl,
           readme,
           readmeHTML,
           releases,

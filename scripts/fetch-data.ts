@@ -390,7 +390,6 @@ async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null>
   const filteredReleases = repo.releases.edges.filter(({ node }) =>
     !node.isDraft &&
     node.immutable &&
-    node.tagName.match(/^\d+-.+$/) &&
     node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
   );
 

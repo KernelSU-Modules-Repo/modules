@@ -74,6 +74,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install runzip
+        run: cargo install runzip
+
       - name: Fetch module data
         run: bun run scripts/fetch-data.ts
         env:

@@ -3,6 +3,40 @@ import path from 'path';
 import { GraphQLClient, gql } from 'graphql-request';
 import ellipsize from 'ellipsize';
 import MarkdownIt from 'markdown-it';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+// Concurrent execution helper with limit
+async function pMap<T, R>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<R>,
+  concurrency: number = 5
+): Promise<R[]> {
+  const results: R[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const promise = Promise.resolve().then(() => mapper(item, i)).then(result => {
+      results[i] = result;
+    });
+
+    const executing_promise = promise.then(() => {
+      executing.splice(executing.indexOf(executing_promise), 1);
+    });
+
+    executing.push(executing_promise);
+
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
 
 // Type definitions
 type ReleaseAsset = {
@@ -70,6 +104,8 @@ type ModuleRelease = {
   tagName: string;
   isPrerelease: boolean;
   releaseAssets: ReleaseAsset[];
+  version: string;
+  versionCode: string;
 };
 
 type ModuleJson = {
@@ -90,6 +126,7 @@ type ModuleJson = {
   updatedAt: string;
   createdAt: string;
   stargazerCount: number;
+  metamodule: boolean;
 };
 
 const md = new MarkdownIt({
@@ -311,37 +348,107 @@ function replacePrivateImage(markdown: string, html: string): string {
   return html;
 }
 
-function convert2json(repo: GraphQlRepository): ModuleJson | null {
+async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
+  try {
+    // Extract module.prop content from zip URL (internal network, stable)
+    const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 // 64KB buffer
+    });
+
+    // Parse module.prop content
+    const props: Record<string, string> = {};
+    if (!modulePropContent) return props;
+
+    const lines = modulePropContent.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex > 0) {
+        const key = trimmed.substring(0, eqIndex).trim();
+        const value = trimmed.substring(eqIndex + 1).trim();
+        props[key] = value;
+      }
+    }
+
+    return props;
+  } catch (err: any) {
+    console.error(`Failed to extract props from ${downloadUrl}: ${err.message}`);
+    return {};
+  }
+}
+
+async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null> {
   // Merge latestRelease into releases if not present
   if (repo.latestRelease && !repo.releases.edges.find(r => r.node.tagName === repo.latestRelease?.tagName)) {
     repo.releases.edges.push({ node: repo.latestRelease });
   }
 
-  // Filter and transform releases
-  const releases: ModuleRelease[] = repo.releases.edges
-    .filter(({ node }) =>
-      !node.isDraft &&
-      node.immutable &&
-      node.tagName.match(/^\d+-.+$/) &&
-      node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
-    )
-    .map(({ node }) => ({
-      name: node.name,
-      url: node.url,
-      descriptionHTML: replacePrivateImage(node.description, node.descriptionHTML),
-      createdAt: node.createdAt,
-      publishedAt: node.publishedAt,
-      updatedAt: node.updatedAt,
-      tagName: node.tagName,
-      isPrerelease: node.isPrerelease,
-      releaseAssets: node.releaseAssets.edges.map(({ node: asset }) => ({
-        name: asset.name,
-        contentType: asset.contentType,
-        downloadUrl: asset.downloadUrl,
-        downloadCount: asset.downloadCount,
-        size: asset.size,
-      })),
-    }));
+  // Filter releases first
+  const filteredReleases = repo.releases.edges.filter(({ node }) =>
+    !node.isDraft &&
+    node.immutable &&
+    node.tagName.match(/^\d+-.+$/) &&
+    node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
+  );
+
+  // Transform releases and extract version info from zip files concurrently
+  const startTime = Date.now();
+  const releasesResults = await pMap(
+    filteredReleases,
+    async ({ node }) => {
+      const zipAsset = node.releaseAssets.edges.find(({ node: asset }) => asset.contentType === 'application/zip');
+
+      if (!zipAsset) {
+        console.log(`Skipping release ${node.tagName} for ${repo.name}: no zip asset found`);
+        return null;
+      }
+
+      const moduleProps = await extractModulePropsFromZip(zipAsset.node.downloadUrl);
+
+      // Skip release if id doesn't match repository name
+      if (moduleProps.id !== repo.name) {
+        console.log(`Skipping release ${node.tagName} for ${repo.name}: module.prop id (${moduleProps.id}) doesn't match repository name`);
+        return null;
+      }
+
+      // Skip release if version or versionCode is missing
+      if (!moduleProps.version || !moduleProps.versionCode) {
+        console.log(`Skipping release ${node.tagName} for ${repo.name}: missing version (${moduleProps.version}) or versionCode (${moduleProps.versionCode})`);
+        return null;
+      }
+
+      return {
+        name: node.name,
+        url: node.url,
+        descriptionHTML: replacePrivateImage(node.description, node.descriptionHTML),
+        createdAt: node.createdAt,
+        publishedAt: node.publishedAt,
+        updatedAt: node.updatedAt,
+        tagName: node.tagName,
+        isPrerelease: node.isPrerelease,
+        releaseAssets: node.releaseAssets.edges.map(({ node: asset }) => ({
+          name: asset.name,
+          contentType: asset.contentType,
+          downloadUrl: asset.downloadUrl,
+          downloadCount: asset.downloadCount,
+          size: asset.size,
+        })),
+        version: moduleProps.version,
+        versionCode: moduleProps.versionCode,
+      };
+    },
+    100 // 100 concurrent downloads per repository
+  );
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  if (filteredReleases.length > 0) {
+    console.log(`Processed ${filteredReleases.length} releases for ${repo.name} in ${elapsed}s`);
+  }
+
+  // Filter out null results
+  const releases = releasesResults.filter((r): r is ModuleRelease => r !== null);
 
   // Check if this is a valid module
   const isModule = !!(
@@ -370,6 +477,7 @@ function convert2json(repo: GraphQlRepository): ModuleJson | null {
   let summary: string | null = null;
   let sourceUrl: string | null = null;
   let additionalAuthors: Array<{ type?: string; name: string; link?: string }> = [];
+  let metamodule = false;
 
   if (repo.moduleJson) {
     try {
@@ -382,6 +490,9 @@ function convert2json(repo: GraphQlRepository): ModuleJson | null {
       }
       if (moduleData.additionalAuthors instanceof Array) {
         additionalAuthors = moduleData.additionalAuthors.filter((a: any) => a && typeof a === 'object');
+      }
+      if (moduleData.metamodule === true) {
+        metamodule = true;
       }
     } catch (e: any) {
       console.log(`Failed to parse module.json for ${repo.name}: ${e.message}`);
@@ -428,6 +539,7 @@ function convert2json(repo: GraphQlRepository): ModuleJson | null {
     updatedAt: repo.updatedAt,
     createdAt: repo.createdAt,
     stargazerCount: repo.stargazerCount,
+    metamodule,
   };
 }
 
@@ -456,7 +568,7 @@ async function main() {
       return;
     }
 
-    const module = convert2json(result.repository);
+    const module = await convert2json(result.repository);
     if (!module) return;
 
     // Load existing modules and update
@@ -502,12 +614,22 @@ async function main() {
     // Save raw GraphQL response for incremental updates
     fs.writeFileSync(graphqlCachePath, JSON.stringify({ repositories: mergedRepositories }, null, 2));
 
-    // Convert to modules
-    let modules: ModuleJson[] = [];
-    for (const { node } of mergedRepositories) {
-      const module = convert2json(node);
-      if (module) modules.push(module);
-    }
+    // Convert to modules with concurrency control
+    console.log(`Processing ${mergedRepositories.length} repositories...`);
+    const overallStartTime = Date.now();
+    const modulesResults = await pMap(
+      mergedRepositories,
+      async ({ node }, index) => {
+        console.log(`[${index + 1}/${mergedRepositories.length}] Processing ${node.name}...`);
+        return await convert2json(node);
+      },
+      20 // 20 concurrent repositories
+    );
+    const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(2);
+    console.log(`Completed processing all repositories in ${totalElapsed}s`);
+
+    // Filter out null results
+    const modules = modulesResults.filter((m): m is ModuleJson => m !== null);
 
     // Sort by latest release time
     modules.sort((a, b) => {

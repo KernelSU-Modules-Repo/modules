@@ -56,7 +56,7 @@ jobs:
 
       - name: Install runzip
         run: |
-          wget -q -O /usr/local/bin/runzip https://github.com/Ylarod/runzip/releases/download/v0.1.7/runzip-x86_64-unknown-linux-gnu
+          wget -q -O /usr/local/bin/runzip https://github.com/Ylarod/runzip/releases/download/v0.1.8/runzip-x86_64-unknown-linux-gnu
           chmod +x /usr/local/bin/runzip
 
       - name: Fetch module data

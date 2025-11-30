@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@plugin "@tailwindcss/typography";
+@import "github-markdown-css/github-markdown.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

@@ -53,7 +53,7 @@ const readmeHTML = module.readmeHTML || '';
                         </svg>
                         README
                     </h2>
-                    <article class="prose prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-24 prose-a:text-blue-600 dark:prose-a:text-blue-400 hover:prose-a:text-blue-500 dark:hover:prose-a:text-blue-300 prose-img:rounded-xl">
+                    <article class="markdown-body">
                         <Fragment set:html={readmeHTML} />
                     </article>
                 </div>
@@ -111,7 +111,7 @@ const readmeHTML = module.readmeHTML || '';
                                         )}
                                     </div>
                                     {release.descriptionHTML && (
-                                        <div class="prose prose-sm prose-slate dark:prose-invert max-w-none bg-gray-50 dark:bg-slate-950/50 rounded-lg p-4 border border-gray-100 dark:border-slate-800/50">
+                                        <div class="markdown-body markdown-body-sm bg-gray-50 dark:bg-slate-950/50 rounded-lg p-4 border border-gray-100 dark:border-slate-800/50">
                                             <Fragment set:html={release.descriptionHTML} />
                                         </div>
                                     )}
@@ -237,21 +237,210 @@ const readmeHTML = module.readmeHTML || '';
 </Layout>
 
 <style is:global>
-    /* Markdown Styles Override */
-    .prose img {
+    /* GitHub Markdown Styles Override */
+    .markdown-body {
+        background-color: transparent !important;
+        color: inherit;
+    }
+
+    .markdown-body img {
         border-radius: 0.75rem;
     }
-    .prose a {
-        text-decoration: none;
-    }
-    .prose a:hover {
-        text-decoration: underline;
-    }
-    .prose pre {
+
+    .markdown-body pre {
         border-radius: 0.75rem;
     }
-    .dark .prose pre {
-        background-color: #1e293b;
-        border: 1px solid #334155;
+
+    .markdown-body-sm {
+        font-size: 0.875rem;
+    }
+
+    .markdown-body-sm pre,
+    .markdown-body-sm code {
+        font-size: 0.8rem;
+    }
+
+    /* Dark mode support for .dark class */
+    .dark .markdown-body {
+        color-scheme: dark;
+        --color-prettylights-syntax-comment: #8b949e;
+        --color-prettylights-syntax-constant: #79c0ff;
+        --color-prettylights-syntax-entity: #d2a8ff;
+        --color-prettylights-syntax-storage-modifier-import: #c9d1d9;
+        --color-prettylights-syntax-entity-tag: #7ee787;
+        --color-prettylights-syntax-keyword: #ff7b72;
+        --color-prettylights-syntax-string: #a5d6ff;
+        --color-prettylights-syntax-variable: #ffa657;
+        --color-prettylights-syntax-brackethighlighter-unmatched: #f85149;
+        --color-prettylights-syntax-invalid-illegal-text: #f0f6fc;
+        --color-prettylights-syntax-invalid-illegal-bg: #8e1519;
+        --color-prettylights-syntax-carriage-return-text: #f0f6fc;
+        --color-prettylights-syntax-carriage-return-bg: #b62324;
+        --color-prettylights-syntax-string-regexp: #7ee787;
+        --color-prettylights-syntax-markup-list: #f2cc60;
+        --color-prettylights-syntax-markup-heading: #1f6feb;
+        --color-prettylights-syntax-markup-italic: #c9d1d9;
+        --color-prettylights-syntax-markup-bold: #c9d1d9;
+        --color-prettylights-syntax-markup-deleted-text: #ffdcd7;
+        --color-prettylights-syntax-markup-deleted-bg: #67060c;
+        --color-prettylights-syntax-markup-inserted-text: #aff5b4;
+        --color-prettylights-syntax-markup-inserted-bg: #033a16;
+        --color-prettylights-syntax-markup-changed-text: #ffdfb6;
+        --color-prettylights-syntax-markup-changed-bg: #5a1e02;
+        --color-prettylights-syntax-markup-ignored-text: #c9d1d9;
+        --color-prettylights-syntax-markup-ignored-bg: #1158c7;
+        --color-prettylights-syntax-meta-diff-range: #d2a8ff;
+        --color-prettylights-syntax-sublimelinter-gutter-mark: #484f58;
+        --color-fg-default: #e6edf3;
+        --color-fg-muted: #848d97;
+        --color-fg-subtle: #6e7681;
+        --color-canvas-default: transparent;
+        --color-canvas-subtle: #161b22;
+        --color-border-default: #30363d;
+        --color-border-muted: #21262d;
+        --color-neutral-muted: rgba(110,118,129,0.4);
+        --color-accent-fg: #2f81f7;
+        --color-accent-emphasis: #1f6feb;
+        --color-success-fg: #3fb950;
+        --color-success-emphasis: #238636;
+        --color-attention-fg: #d29922;
+        --color-attention-emphasis: #9e6a03;
+        --color-attention-subtle: rgba(187,128,9,0.15);
+        --color-danger-fg: #f85149;
+        --color-danger-emphasis: #da3633;
+        --color-done-fg: #a371f7;
+        --color-done-emphasis: #8957e5;
+    }
+
+    .dark .markdown-body pre {
+        background-color: #161b22 !important;
+        border: 1px solid #30363d;
+    }
+
+    .dark .markdown-body code {
+        background-color: rgba(110,118,129,0.4);
+    }
+
+    .dark .markdown-body pre code {
+        background-color: transparent;
+    }
+
+    .dark .markdown-body a {
+        color: #58a6ff;
+    }
+
+    .dark .markdown-body hr {
+        background-color: #30363d;
+    }
+
+    .dark .markdown-body blockquote {
+        border-color: #30363d;
+        color: #8b949e;
+    }
+
+    .dark .markdown-body table tr {
+        background-color: transparent;
+        border-color: #30363d;
+    }
+
+    .dark .markdown-body table tr:nth-child(2n) {
+        background-color: #161b22;
+    }
+
+    .dark .markdown-body table th,
+    .dark .markdown-body table td {
+        border-color: #30363d;
+    }
+
+    /* Task list checkbox styling */
+    .markdown-body .task-list-item {
+        list-style-type: none;
+    }
+
+    .markdown-body .task-list-item input[type="checkbox"] {
+        margin-right: 0.5rem;
+    }
+
+    /* GitHub Alerts styling */
+    .markdown-body .markdown-alert {
+        padding: 0.5rem 1rem;
+        margin-bottom: 1rem;
+        border-left: 4px solid;
+        border-radius: 0.375rem;
+    }
+
+    .markdown-body .markdown-alert-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+    }
+
+    .markdown-body .markdown-alert-title svg {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    /* Note - Blue */
+    .markdown-body .markdown-alert-note {
+        background-color: rgba(59, 130, 246, 0.1);
+        border-color: #3b82f6;
+    }
+    .markdown-body .markdown-alert-note .markdown-alert-title {
+        color: #3b82f6;
+    }
+
+    /* Tip - Green */
+    .markdown-body .markdown-alert-tip {
+        background-color: rgba(34, 197, 94, 0.1);
+        border-color: #22c55e;
+    }
+    .markdown-body .markdown-alert-tip .markdown-alert-title {
+        color: #22c55e;
+    }
+
+    /* Important - Purple */
+    .markdown-body .markdown-alert-important {
+        background-color: rgba(168, 85, 247, 0.1);
+        border-color: #a855f7;
+    }
+    .markdown-body .markdown-alert-important .markdown-alert-title {
+        color: #a855f7;
+    }
+
+    /* Warning - Yellow/Orange */
+    .markdown-body .markdown-alert-warning {
+        background-color: rgba(234, 179, 8, 0.1);
+        border-color: #eab308;
+    }
+    .markdown-body .markdown-alert-warning .markdown-alert-title {
+        color: #eab308;
+    }
+
+    /* Caution - Red */
+    .markdown-body .markdown-alert-caution {
+        background-color: rgba(239, 68, 68, 0.1);
+        border-color: #ef4444;
+    }
+    .markdown-body .markdown-alert-caution .markdown-alert-title {
+        color: #ef4444;
+    }
+
+    /* Dark mode alerts */
+    .dark .markdown-body .markdown-alert-note {
+        background-color: rgba(59, 130, 246, 0.15);
+    }
+    .dark .markdown-body .markdown-alert-tip {
+        background-color: rgba(34, 197, 94, 0.15);
+    }
+    .dark .markdown-body .markdown-alert-important {
+        background-color: rgba(168, 85, 247, 0.15);
+    }
+    .dark .markdown-body .markdown-alert-warning {
+        background-color: rgba(234, 179, 8, 0.15);
+    }
+    .dark .markdown-body .markdown-alert-caution {
+        background-color: rgba(239, 68, 68, 0.15);
     }
 </style>

@@ -1,13 +1,6 @@
 {
   "name": "modules-next",
-  "type": "module",
   "version": "0.0.1",
-  "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
-  },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
     "@tailwindcss/vite": "^4.1.17",
@@ -18,15 +11,28 @@
     "astro": "^5.16.0",
     "ellipsize": "^0.7.0",
     "fuse.js": "^7.1.0",
+    "github-markdown-css": "^5.8.1",
     "graphql": "^16.12.0",
     "graphql-request": "^7.3.4",
     "markdown-it": "^14.1.0",
+    "markdown-it-anchor": "^9.2.0",
+    "markdown-it-emoji": "^3.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-github-alerts": "^1.0.0",
+    "markdown-it-task-lists": "^2.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.17",
     "uuid": "^13.0.0"
   },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "type": "module",
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.19"
+    "@types/markdown-it-footnote": "^3.0.4"
   }
 }

@@ -3,6 +3,11 @@ import path from 'path';
 import { GraphQLClient, gql } from 'graphql-request';
 import ellipsize from 'ellipsize';
 import MarkdownIt from 'markdown-it';
+import markdownItTaskLists from 'markdown-it-task-lists';
+import markdownItFootnote from 'markdown-it-footnote';
+import markdownItAnchor from 'markdown-it-anchor';
+import markdownItGitHubAlerts from 'markdown-it-github-alerts';
+import { full as markdownItEmoji } from 'markdown-it-emoji';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -133,7 +138,15 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true
-});
+})
+  .use(markdownItTaskLists, { enabled: true, label: true, labelAfter: true })
+  .use(markdownItFootnote)
+  .use(markdownItAnchor, {
+    permalink: markdownItAnchor.permalink.headerLink(),
+    slugify: (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '')
+  })
+  .use(markdownItGitHubAlerts)
+  .use(markdownItEmoji);
 
 // Skip reason types for detailed error reporting
 enum SkipReason {
@@ -481,7 +494,7 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
   }
 }
 
-const RESERVED_NAMES = ['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example'];
+const RESERVED_NAMES = ['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example', "module_release"];
 
 async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
   // Check reserved names first

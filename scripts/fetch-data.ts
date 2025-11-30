@@ -595,11 +595,15 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
     repo.releases.edges.push({ node: repo.latestRelease });
   }
 
+  // Supported zip content types
+  const ZIP_CONTENT_TYPES = ['application/zip', 'application/x-zip-compressed'];
+  const isZipAsset = (contentType: string) => ZIP_CONTENT_TYPES.includes(contentType);
+
   // Filter releases first
   const filteredReleases = repo.releases.edges.filter(({ node }) =>
     !node.isDraft &&
     node.immutable &&
-    node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
+    node.releaseAssets?.edges.some(({ node: asset }) => isZipAsset(asset.contentType))
   );
 
   // Track release-level skip reasons for reporting
@@ -610,7 +614,7 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
   const releasesResults = await pMap(
     filteredReleases,
     async ({ node }) => {
-      const zipAsset = node.releaseAssets.edges.find(({ node: asset }) => asset.contentType === 'application/zip');
+      const zipAsset = node.releaseAssets.edges.find(({ node: asset }) => isZipAsset(asset.contentType));
 
       if (!zipAsset) {
         console.log(`Skipped release ${node.tagName} (${repo.name}): no zip asset found`);

@@ -135,8 +135,109 @@ const md = new MarkdownIt({
   typographer: true
 });
 
+// Skip reason types for detailed error reporting
+enum SkipReason {
+  INVALID_NAME = 'INVALID_NAME',
+  NO_DESCRIPTION = 'NO_DESCRIPTION',
+  NO_VALID_RELEASES = 'NO_VALID_RELEASES',
+  RESERVED_NAME = 'RESERVED_NAME',
+  NO_ZIP_ASSET = 'NO_ZIP_ASSET',
+  MODULE_ID_MISMATCH = 'MODULE_ID_MISMATCH',
+  MISSING_VERSION = 'MISSING_VERSION',
+  MISSING_MODULE_PROP = 'MISSING_MODULE_PROP',
+}
+
+type SkipInfo = {
+  reason: SkipReason;
+  message: string;
+  details?: Record<string, any>;
+};
+
+type ConvertResult =
+  | { success: true; module: ModuleJson }
+  | { success: false; skipInfo: SkipInfo };
+
+const SKIP_REASON_MESSAGES: Record<SkipReason, { title: string; body: string }> = {
+  [SkipReason.INVALID_NAME]: {
+    title: 'Invalid module name format',
+    body: 'Repository name must start with a letter and can only contain letters, numbers, dots (.), underscores (_), and hyphens (-).\n\nPlease rename the repository to match the required format: `^[a-zA-Z][a-zA-Z0-9._-]+$`',
+  },
+  [SkipReason.NO_DESCRIPTION]: {
+    title: 'Missing repository description',
+    body: 'The repository is missing a description. Please add a description in the repository settings.\n\nThe description will be displayed as the module name in the module list.',
+  },
+  [SkipReason.NO_VALID_RELEASES]: {
+    title: 'No valid releases found',
+    body: 'The repository has no releases that meet the requirements.\n\nA valid release must:\n- Not be a draft\n- Be immutable (locked)\n- Contain a `.zip` attachment\n\nPlease create a proper release and upload the module zip file.',
+  },
+  [SkipReason.RESERVED_NAME]: {
+    title: 'Repository name is reserved',
+    body: 'This repository name is reserved for system use and will not be included as a module.',
+  },
+  [SkipReason.NO_ZIP_ASSET]: {
+    title: 'Release missing ZIP attachment',
+    body: 'No `.zip` attachment was found in the release.\n\nPlease ensure you upload the module zip file to the release.',
+  },
+  [SkipReason.MODULE_ID_MISMATCH]: {
+    title: 'module.prop id does not match repository name',
+    body: 'The `id` field in `module.prop` inside the zip file must exactly match the repository name.\n\n**Current status:**\n- Repository name: `{repoName}`\n- module.prop id: `{moduleId}`\n\nPlease update the `id` field in `module.prop` or rename the repository.',
+  },
+  [SkipReason.MISSING_VERSION]: {
+    title: 'module.prop missing version information',
+    body: 'The `module.prop` in the zip file is missing required version fields.\n\n**Current status:**\n- version: `{version}`\n- versionCode: `{versionCode}`\n\nPlease ensure `module.prop` contains valid `version` and `versionCode` fields.',
+  },
+  [SkipReason.MISSING_MODULE_PROP]: {
+    title: 'ZIP file missing module.prop',
+    body: 'No `module.prop` file was found in the release zip file.\n\nThis is a required file for KernelSU modules. Please ensure the zip package root directory contains a valid `module.prop`.',
+  },
+};
+
 const PAGINATION = 10;
 const GRAPHQL_TOKEN = process.env.GRAPHQL_TOKEN;
+const ISSUE_LABEL = 'module-validation';
+
+// Create GitHub Issue for module validation errors (incremental build only)
+async function createValidationIssue(repoName: string, skipInfo: SkipInfo): Promise<void> {
+  const template = SKIP_REASON_MESSAGES[skipInfo.reason];
+  let body = template.body;
+
+  // Replace placeholders with actual values
+  if (skipInfo.details) {
+    for (const [key, value] of Object.entries(skipInfo.details)) {
+      body = body.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value ?? 'N/A'));
+    }
+  }
+
+  body += `\n\n---\n*This issue was automatically created by the build system to notify module authors of issues that need to be fixed.*\n*Please close this issue after fixing the problem. The next build will automatically retry.*`;
+
+  const ghEnv = { ...process.env, GH_TOKEN: GRAPHQL_TOKEN };
+
+  try {
+    // Check if similar issue already exists
+    const { stdout: existingIssues } = await execAsync(
+      `gh issue list --repo "KernelSU-Modules-Repo/${repoName}" --label "${ISSUE_LABEL}" --state open --json title,number --limit 10`,
+      { encoding: 'utf8', env: ghEnv }
+    );
+
+    const issues = JSON.parse(existingIssues || '[]');
+    const existingIssue = issues.find((i: any) => i.title === template.title);
+
+    if (existingIssue) {
+      console.log(`Issue already exists for ${repoName}: #${existingIssue.number}`);
+      return;
+    }
+
+    // Create new issue
+    await execAsync(
+      `gh issue create --repo "KernelSU-Modules-Repo/${repoName}" --title "${template.title}" --body "${body.replace(/"/g, '\\"')}" --label "${ISSUE_LABEL}"`,
+      { encoding: 'utf8', env: ghEnv }
+    );
+
+    console.log(`Created issue for ${repoName}: ${template.title}`);
+  } catch (err: any) {
+    console.error(`Failed to create issue for ${repoName}: ${err.message}`);
+  }
+}
 
 if (!GRAPHQL_TOKEN) {
   console.error('Error: GRAPHQL_TOKEN environment variable is not set.');
@@ -380,7 +481,49 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
   }
 }
 
-async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null> {
+const RESERVED_NAMES = ['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example'];
+
+async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
+  // Check reserved names first
+  if (RESERVED_NAMES.includes(repo.name)) {
+    const msg = `Skipped ${repo.name}: reserved name`;
+    console.log(msg);
+    return {
+      success: false,
+      skipInfo: {
+        reason: SkipReason.RESERVED_NAME,
+        message: msg,
+      },
+    };
+  }
+
+  // Check name format
+  if (!repo.name.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/)) {
+    const msg = `Skipped ${repo.name}: invalid name format (must match ^[a-zA-Z][a-zA-Z0-9._-]+$)`;
+    console.log(msg);
+    return {
+      success: false,
+      skipInfo: {
+        reason: SkipReason.INVALID_NAME,
+        message: msg,
+        details: { repoName: repo.name },
+      },
+    };
+  }
+
+  // Check description
+  if (!repo.description) {
+    const msg = `Skipped ${repo.name}: missing repository description`;
+    console.log(msg);
+    return {
+      success: false,
+      skipInfo: {
+        reason: SkipReason.NO_DESCRIPTION,
+        message: msg,
+      },
+    };
+  }
+
   // Merge latestRelease into releases if not present
   if (repo.latestRelease && !repo.releases.edges.find(r => r.node.tagName === repo.latestRelease?.tagName)) {
     repo.releases.edges.push({ node: repo.latestRelease });
@@ -393,6 +536,9 @@ async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null>
     node.releaseAssets?.edges.some(({ node: asset }) => asset.contentType === 'application/zip')
   );
 
+  // Track release-level skip reasons for reporting
+  const releaseSkipReasons: Array<{ tagName: string; reason: SkipReason; details?: Record<string, any> }> = [];
+
   // Transform releases and extract version info from zip files concurrently
   const startTime = Date.now();
   const releasesResults = await pMap(
@@ -401,21 +547,39 @@ async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null>
       const zipAsset = node.releaseAssets.edges.find(({ node: asset }) => asset.contentType === 'application/zip');
 
       if (!zipAsset) {
-        console.log(`Skipping release ${node.tagName} for ${repo.name}: no zip asset found`);
+        console.log(`Skipped release ${node.tagName} (${repo.name}): no zip asset found`);
+        releaseSkipReasons.push({ tagName: node.tagName, reason: SkipReason.NO_ZIP_ASSET });
         return null;
       }
 
       const moduleProps = await extractModulePropsFromZip(zipAsset.node.downloadUrl);
 
+      // Check if module.prop exists (empty props means extraction failed)
+      if (Object.keys(moduleProps).length === 0) {
+        console.log(`Skipped release ${node.tagName} (${repo.name}): failed to read module.prop`);
+        releaseSkipReasons.push({ tagName: node.tagName, reason: SkipReason.MISSING_MODULE_PROP });
+        return null;
+      }
+
       // Skip release if id doesn't match repository name
       if (moduleProps.id !== repo.name) {
-        console.log(`Skipping release ${node.tagName} for ${repo.name}: module.prop id (${moduleProps.id}) doesn't match repository name`);
+        console.log(`Skipped release ${node.tagName} (${repo.name}): module.prop id (${moduleProps.id}) does not match repo name`);
+        releaseSkipReasons.push({
+          tagName: node.tagName,
+          reason: SkipReason.MODULE_ID_MISMATCH,
+          details: { repoName: repo.name, moduleId: moduleProps.id },
+        });
         return null;
       }
 
       // Skip release if version or versionCode is missing
       if (!moduleProps.version || !moduleProps.versionCode) {
-        console.log(`Skipping release ${node.tagName} for ${repo.name}: missing version (${moduleProps.version}) or versionCode (${moduleProps.versionCode})`);
+        console.log(`Skipped release ${node.tagName} (${repo.name}): missing version (${moduleProps.version}) or versionCode (${moduleProps.versionCode})`);
+        releaseSkipReasons.push({
+          tagName: node.tagName,
+          reason: SkipReason.MISSING_VERSION,
+          details: { version: moduleProps.version, versionCode: moduleProps.versionCode },
+        });
         return null;
       }
 
@@ -449,19 +613,42 @@ async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null>
   // Filter out null results
   const releases = releasesResults.filter((r): r is ModuleRelease => r !== null);
 
-  // Check if this is a valid module
-  const isModule = !!(
-    repo.name.match(/^[a-zA-Z][a-zA-Z0-9._-]+$/) &&
-    repo.description &&
-    releases.length &&
-    !['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example'].includes(repo.name)
-  );
+  // Check if we have any valid releases
+  if (releases.length === 0) {
+    // Determine the most relevant skip reason
+    let skipInfo: SkipInfo;
 
-  if (!isModule) {
-    console.log(`skipped ${repo.name}`);
-    return null;
+    if (filteredReleases.length === 0) {
+      // No releases passed initial filter (draft/immutable/zip check)
+      const msg = `Skipped ${repo.name}: no valid releases (requires non-draft, immutable, with zip asset)`;
+      console.log(msg);
+      skipInfo = {
+        reason: SkipReason.NO_VALID_RELEASES,
+        message: msg,
+      };
+    } else if (releaseSkipReasons.length > 0) {
+      // Use the most recent release's skip reason
+      const latestSkip = releaseSkipReasons[0];
+      const msg = `Skipped ${repo.name}: ${latestSkip.reason} (latest release: ${latestSkip.tagName})`;
+      console.log(msg);
+      skipInfo = {
+        reason: latestSkip.reason,
+        message: msg,
+        details: latestSkip.details,
+      };
+    } else {
+      const msg = `Skipped ${repo.name}: no valid releases`;
+      console.log(msg);
+      skipInfo = {
+        reason: SkipReason.NO_VALID_RELEASES,
+        message: msg,
+      };
+    }
+
+    return { success: false, skipInfo };
   }
-  console.log(`found ${repo.name}`);
+
+  console.log(`Found module ${repo.name}`);
 
   // Find latest releases by type
   const latestRelease = releases.find(v => !v.isPrerelease);
@@ -521,24 +708,27 @@ async function convert2json(repo: GraphQlRepository): Promise<ModuleJson | null>
   }
 
   return {
-    moduleId: repo.name,
-    moduleName: repo.description,
-    url: repo.url,
-    homepageUrl: repo.homepageUrl || null,
-    authors,
-    latestRelease: latestRelease?.name || null,
-    latestReleaseTime: latestRelease?.publishedAt || '1970-01-01T00:00:00Z',
-    latestBetaReleaseTime: latestBetaRelease?.publishedAt || '1970-01-01T00:00:00Z',
-    latestSnapshotReleaseTime: latestSnapshotRelease?.publishedAt || '1970-01-01T00:00:00Z',
-    releases,
-    readme: readmeText,
-    readmeHTML,
-    summary,
-    sourceUrl,
-    updatedAt: repo.updatedAt,
-    createdAt: repo.createdAt,
-    stargazerCount: repo.stargazerCount,
-    metamodule,
+    success: true,
+    module: {
+      moduleId: repo.name,
+      moduleName: repo.description,
+      url: repo.url,
+      homepageUrl: repo.homepageUrl || null,
+      authors,
+      latestRelease: latestRelease?.name || null,
+      latestReleaseTime: latestRelease?.publishedAt || '1970-01-01T00:00:00Z',
+      latestBetaReleaseTime: latestBetaRelease?.publishedAt || '1970-01-01T00:00:00Z',
+      latestSnapshotReleaseTime: latestSnapshotRelease?.publishedAt || '1970-01-01T00:00:00Z',
+      releases,
+      readme: readmeText,
+      readmeHTML,
+      summary,
+      sourceUrl,
+      updatedAt: repo.updatedAt,
+      createdAt: repo.createdAt,
+      stargazerCount: repo.stargazerCount,
+      metamodule,
+    },
   };
 }
 
@@ -567,13 +757,20 @@ async function main() {
       return;
     }
 
-    const module = await convert2json(result.repository);
-    if (!module) return;
+    const convertResult = await convert2json(result.repository);
+
+    if (!convertResult.success) {
+      // Create issue for validation error (incremental build only)
+      console.log(`Module validation failed, creating issue...`);
+      await createValidationIssue(modulePackage, convertResult.skipInfo);
+      console.error(`Incremental build failed: ${convertResult.skipInfo.message}`);
+      process.exit(1);
+    }
 
     // Load existing modules and update
     let modules: ModuleJson[] = JSON.parse(fs.readFileSync(modulesCachePath, 'utf-8'));
     modules = modules.filter(m => m.moduleId !== modulePackage);
-    modules.unshift(module);
+    modules.unshift(convertResult.module);
 
     // Sort by latest release time
     modules.sort((a, b) => {
@@ -627,8 +824,10 @@ async function main() {
     const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(2);
     console.log(`Completed processing all repositories in ${totalElapsed}s`);
 
-    // Filter out null results
-    const modules = modulesResults.filter((m): m is ModuleJson => m !== null);
+    // Filter successful results and extract modules
+    const modules = modulesResults
+      .filter((r): r is { success: true; module: ModuleJson } => r.success)
+      .map(r => r.module);
 
     // Sort by latest release time
     modules.sort((a, b) => {

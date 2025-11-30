@@ -22,7 +22,8 @@ run-name: Build ${{ github.event.inputs.repo }}
 jobs:
   deploy:
     concurrency:
-      group: ${{ github.sha }}
+      group: ${{ github.event.inputs.repo && 'incremental-build' || github.sha }}
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

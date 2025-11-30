@@ -7,6 +7,7 @@ import markdownItTaskLists from 'markdown-it-task-lists';
 import markdownItFootnote from 'markdown-it-footnote';
 import markdownItGitHubAlerts from 'markdown-it-github-alerts';
 import { full as markdownItEmoji } from 'markdown-it-emoji';
+import { Octokit } from '@octokit/rest';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -160,6 +161,7 @@ type SkipInfo = {
   message: string;
   details?: Record<string, any>;
   shouldNotify: boolean; // Only notify when latest release has issues
+  tagName?: string; // The release tag that has issues (for commenting)
 };
 
 type ConvertResult =
@@ -203,48 +205,100 @@ const SKIP_REASON_MESSAGES: Record<SkipReason, { title: string; body: string }> 
 
 const PAGINATION = 10;
 const GRAPHQL_TOKEN = process.env.GRAPHQL_TOKEN;
-const ISSUE_LABEL = 'module-validation';
+const GITHUB_ORG = 'KernelSU-Modules-Repo';
 
-// Create GitHub Issue for module validation errors (incremental build only)
-async function createValidationIssue(repoName: string, skipInfo: SkipInfo): Promise<void> {
+// Initialize Octokit client
+const octokit = new Octokit({
+  auth: GRAPHQL_TOKEN,
+});
+
+// GitHub Actions bot usernames
+const GITHUB_BOTS = ['github-actions[bot]', 'dependabot[bot]', 'renovate[bot]'];
+
+// Comment on a release tag for validation errors (incremental build only)
+// No duplicate check needed - immutable releases cannot be republished
+async function commentOnRelease(repoName: string, tagName: string, skipInfo: SkipInfo): Promise<void> {
   const template = SKIP_REASON_MESSAGES[skipInfo.reason];
-  let body = template.body;
-
-  // Replace placeholders with actual values
-  if (skipInfo.details) {
-    for (const [key, value] of Object.entries(skipInfo.details)) {
-      body = body.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value ?? 'N/A'));
-    }
-  }
-
-  body += `\n\n---\n*This issue was automatically created by the build system to notify module authors of issues that need to be fixed.*\n*Please close this issue after fixing the problem. The next build will automatically retry.*`;
-
-  const ghEnv = { ...process.env, GH_TOKEN: GRAPHQL_TOKEN };
 
   try {
-    // Check if similar issue already exists
-    const { stdout: existingIssues } = await execAsync(
-      `gh issue list --repo "KernelSU-Modules-Repo/${repoName}" --label "${ISSUE_LABEL}" --state open --json title,number --limit 10`,
-      { encoding: 'utf8', env: ghEnv }
-    );
+    // Get release author
+    const { data: release } = await octokit.repos.getReleaseByTag({
+      owner: GITHUB_ORG,
+      repo: repoName,
+      tag: tagName,
+    });
 
-    const issues = JSON.parse(existingIssues || '[]');
-    const existingIssue = issues.find((i: any) => i.title === template.title);
+    const author = release.author?.login;
+    let mentions = '';
 
-    if (existingIssue) {
-      console.log(`Issue already exists for ${repoName}: #${existingIssue.number}`);
-      return;
+    if (author && !GITHUB_BOTS.includes(author)) {
+      // @ the release author
+      mentions = `@${author}`;
+    } else {
+      // Release was created by bot, @ all collaborators
+      try {
+        const { data: collaborators } = await octokit.repos.listCollaborators({
+          owner: GITHUB_ORG,
+          repo: repoName,
+          affiliation: 'direct',
+        });
+        const collaboratorMentions = collaborators
+          .filter(c => !GITHUB_BOTS.includes(c.login))
+          .map(c => `@${c.login}`);
+        if (collaboratorMentions.length > 0) {
+          mentions = collaboratorMentions.join(' ');
+        }
+      } catch {
+        // Failed to get collaborators, continue without mentions
+      }
     }
 
-    // Create new issue
-    await execAsync(
-      `gh issue create --repo "KernelSU-Modules-Repo/${repoName}" --title "${template.title}" --body "${body.replace(/"/g, '\\"')}" --label "${ISSUE_LABEL}"`,
-      { encoding: 'utf8', env: ghEnv }
-    );
+    let body = mentions ? `${mentions}\n\n` : '';
+    body += `## ⚠️ ${template.title}\n\n${template.body}`;
 
-    console.log(`Created issue for ${repoName}: ${template.title}`);
+    // Replace placeholders with actual values
+    if (skipInfo.details) {
+      for (const [key, value] of Object.entries(skipInfo.details)) {
+        body = body.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value ?? 'N/A'));
+      }
+    }
+
+    body += `\n\n---\n*This comment was automatically created by the build system.*\n*Please fix the issue and create a new release.*`;
+
+    // Get the commit SHA for this tag
+    const { data: refData } = await octokit.git.getRef({
+      owner: GITHUB_ORG,
+      repo: repoName,
+      ref: `tags/${tagName}`,
+    });
+
+    let commitSha = refData.object.sha;
+
+    // If it's an annotated tag, get the actual commit
+    if (refData.object.type === 'tag') {
+      try {
+        const { data: tagData } = await octokit.git.getTag({
+          owner: GITHUB_ORG,
+          repo: repoName,
+          tag_sha: commitSha,
+        });
+        commitSha = tagData.object.sha;
+      } catch {
+        // Not an annotated tag, use the SHA directly
+      }
+    }
+
+    // Create comment on the commit
+    await octokit.repos.createCommitComment({
+      owner: GITHUB_ORG,
+      repo: repoName,
+      commit_sha: commitSha,
+      body,
+    });
+
+    console.log(`Commented on ${repoName}@${tagName}: ${template.title} (notified: ${mentions || 'none'})`);
   } catch (err: any) {
-    console.error(`Failed to create issue for ${repoName}: ${err.message}`);
+    console.error(`Failed to comment on ${repoName}@${tagName}: ${err.message}`);
   }
 }
 
@@ -655,6 +709,7 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
           message: msg,
           details: latestSkip.details,
           shouldNotify: true, // Latest release has issues, notify
+          tagName: latestSkip.tagName, // For commenting on the release
         };
       } else {
         // Latest release is not the problematic one - only older releases have issues
@@ -791,10 +846,12 @@ async function main() {
     const convertResult = await convert2json(result.repository);
 
     if (!convertResult.success) {
-      // Create issue for validation error (only if shouldNotify is true)
-      if (convertResult.skipInfo.shouldNotify) {
-        console.log(`Module validation failed, creating issue...`);
-        await createValidationIssue(modulePackage, convertResult.skipInfo);
+      // Comment on the release tag for validation error (only if shouldNotify is true and has tagName)
+      if (convertResult.skipInfo.shouldNotify && convertResult.skipInfo.tagName) {
+        console.log(`Module validation failed, commenting on release ${convertResult.skipInfo.tagName}...`);
+        await commentOnRelease(modulePackage, convertResult.skipInfo.tagName, convertResult.skipInfo);
+      } else if (convertResult.skipInfo.shouldNotify) {
+        console.log(`Module validation failed (module-level error, no specific release to comment on)`);
       } else {
         console.log(`Module validation failed, but not notifying (older releases have issues, not latest)`);
       }

@@ -5,7 +5,6 @@ import ellipsize from 'ellipsize';
 import MarkdownIt from 'markdown-it';
 import markdownItTaskLists from 'markdown-it-task-lists';
 import markdownItFootnote from 'markdown-it-footnote';
-import markdownItAnchor from 'markdown-it-anchor';
 import markdownItGitHubAlerts from 'markdown-it-github-alerts';
 import { full as markdownItEmoji } from 'markdown-it-emoji';
 import { exec } from 'child_process';
@@ -141,10 +140,6 @@ const md = new MarkdownIt({
 })
   .use(markdownItTaskLists, { enabled: true, label: true, labelAfter: true })
   .use(markdownItFootnote)
-  .use(markdownItAnchor, {
-    permalink: markdownItAnchor.permalink.headerLink(),
-    slugify: (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '')
-  })
   .use(markdownItGitHubAlerts)
   .use(markdownItEmoji);
 

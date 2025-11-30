@@ -40,37 +40,16 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Clean cache (full rebuild)
-        if: ${{ !github.event.inputs.repo }}
-        run: |
-          rm -rf .cache
-          rm -rf dist
-          rm -rf .data-cache
-          echo "Cleaned cache for full rebuild"
-
-      - name: Restore .cache directory (incremental)
+      - name: Restore cache (incremental build)
         if: ${{ github.event.inputs.repo }}
         uses: actions/cache/restore@v4
         with:
-          path: .cache
-          key: ${{ runner.os }}-astro-cache-${{ github.run_id }}
-          restore-keys: ${{ runner.os }}-astro-cache-
-
-      - name: Restore dist directory (incremental)
-        if: ${{ github.event.inputs.repo }}
-        uses: actions/cache/restore@v4
-        with:
-          path: dist
-          key: ${{ runner.os }}-astro-dist-${{ github.run_id }}
-          restore-keys: ${{ runner.os }}-astro-dist-
-
-      - name: Restore .data-cache directory (incremental)
-        if: ${{ github.event.inputs.repo }}
-        uses: actions/cache/restore@v4
-        with:
-          path: .data-cache
-          key: ${{ runner.os }}-data-cache-${{ github.run_id }}
-          restore-keys: ${{ runner.os }}-data-cache-
+          path: |
+            .cache
+            .data-cache
+            dist
+          key: modules-build-cache-${{ github.run_id }}
+          restore-keys: modules-build-cache-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -89,26 +68,14 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Save .cache directory
-        if: ${{ github.event.inputs.repo }}
+      - name: Save cache
         uses: actions/cache/save@v4
         with:
-          path: .cache
-          key: ${{ runner.os }}-astro-cache-${{ github.run_id }}
-
-      - name: Save dist directory
-        if: ${{ github.event.inputs.repo }}
-        uses: actions/cache/save@v4
-        with:
-          path: dist
-          key: ${{ runner.os }}-astro-dist-${{ github.run_id }}
-
-      - name: Save .data-cache directory
-        if: ${{ github.event.inputs.repo }}
-        uses: actions/cache/save@v4
-        with:
-          path: .data-cache
-          key: ${{ runner.os }}-data-cache-${{ github.run_id }}
+          path: |
+            .cache
+            .data-cache
+            dist
+          key: modules-build-cache-${{ github.run_id }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

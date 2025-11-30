@@ -159,6 +159,7 @@ type SkipInfo = {
   reason: SkipReason;
   message: string;
   details?: Record<string, any>;
+  shouldNotify: boolean; // Only notify when latest release has issues
 };
 
 type ConvertResult =
@@ -501,6 +502,7 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
       skipInfo: {
         reason: SkipReason.RESERVED_NAME,
         message: msg,
+        shouldNotify: true, // Module-level error, always notify
       },
     };
   }
@@ -515,6 +517,7 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
         reason: SkipReason.INVALID_NAME,
         message: msg,
         details: { repoName: repo.name },
+        shouldNotify: true, // Module-level error, always notify
       },
     };
   }
@@ -528,6 +531,7 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
       skipInfo: {
         reason: SkipReason.NO_DESCRIPTION,
         message: msg,
+        shouldNotify: true, // Module-level error, always notify
       },
     };
   }
@@ -633,23 +637,42 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
       skipInfo = {
         reason: SkipReason.NO_VALID_RELEASES,
         message: msg,
+        shouldNotify: true, // No releases at all, notify
       };
     } else if (releaseSkipReasons.length > 0) {
-      // Use the most recent release's skip reason
-      const latestSkip = releaseSkipReasons[0];
-      const msg = `Skipped ${repo.name}: ${latestSkip.reason} (latest release: ${latestSkip.tagName})`;
-      console.log(msg);
-      skipInfo = {
-        reason: latestSkip.reason,
-        message: msg,
-        details: latestSkip.details,
-      };
+      // Only notify if the latest release has issues
+      const latestReleaseTag = repo.latestRelease?.tagName;
+      const latestSkip = latestReleaseTag
+        ? releaseSkipReasons.find(r => r.tagName === latestReleaseTag)
+        : null;
+
+      if (latestSkip) {
+        // Latest release has issues - notify with specific reason
+        const msg = `Skipped ${repo.name}: ${latestSkip.reason} (latest release: ${latestSkip.tagName})`;
+        console.log(msg);
+        skipInfo = {
+          reason: latestSkip.reason,
+          message: msg,
+          details: latestSkip.details,
+          shouldNotify: true, // Latest release has issues, notify
+        };
+      } else {
+        // Latest release is not the problematic one - only older releases have issues
+        const msg = `Skipped ${repo.name}: no valid releases (older releases have issues)`;
+        console.log(msg);
+        skipInfo = {
+          reason: SkipReason.NO_VALID_RELEASES,
+          message: msg,
+          shouldNotify: false, // Don't notify - only older releases have issues
+        };
+      }
     } else {
       const msg = `Skipped ${repo.name}: no valid releases`;
       console.log(msg);
       skipInfo = {
         reason: SkipReason.NO_VALID_RELEASES,
         message: msg,
+        shouldNotify: true, // No releases, notify
       };
     }
 
@@ -768,9 +791,13 @@ async function main() {
     const convertResult = await convert2json(result.repository);
 
     if (!convertResult.success) {
-      // Create issue for validation error (incremental build only)
-      console.log(`Module validation failed, creating issue...`);
-      await createValidationIssue(modulePackage, convertResult.skipInfo);
+      // Create issue for validation error (only if shouldNotify is true)
+      if (convertResult.skipInfo.shouldNotify) {
+        console.log(`Module validation failed, creating issue...`);
+        await createValidationIssue(modulePackage, convertResult.skipInfo);
+      } else {
+        console.log(`Module validation failed, but not notifying (older releases have issues, not latest)`);
+      }
       console.error(`Incremental build failed: ${convertResult.skipInfo.message}`);
       process.exit(1);
     }

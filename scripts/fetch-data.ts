@@ -313,6 +313,9 @@ const client = new GraphQLClient('https://api.github.com/graphql', {
   },
 });
 
+// Cache for sourceUrl stars to avoid duplicate queries
+const sourceStarsCache = new Map<string, number>();
+
 const makeRepositoryQuery = (name: string) => gql`
 {
   repository(owner: "KernelSU-Modules-Repo", name: "${name}") {
@@ -397,6 +400,48 @@ const makeRepositoryQuery = (name: string) => gql`
   }
 }
 `;
+
+// Generic repository query for arbitrary owner/name
+const makeAnyRepositoryQuery = (owner: string, name: string) => gql`
+{
+  repository(owner: "${owner}", name: "${name}") {
+    stargazerCount
+  }
+}
+`;
+
+function parseGitHubRepoFromUrl(sourceUrl: string): { owner: string; name: string } | null {
+  try {
+    const u = new URL(sourceUrl);
+    if (u.hostname !== 'github.com') return null;
+    const parts = u.pathname.split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+    const owner = parts[0];
+    let name = parts[1];
+    if (name.endsWith('.git')) name = name.slice(0, -4);
+    return { owner, name };
+  } catch {
+    return null;
+  }
+}
+
+async function getStarsFromSourceUrl(sourceUrl: string): Promise<number | null> {
+  const parsed = parseGitHubRepoFromUrl(sourceUrl);
+  if (!parsed) return null;
+  const key = `${parsed.owner}/${parsed.name}`;
+  if (sourceStarsCache.has(key)) return sourceStarsCache.get(key)!;
+  try {
+    const result: any = await client.request(makeAnyRepositoryQuery(parsed.owner, parsed.name));
+    const stars: number | null = result?.repository?.stargazerCount ?? null;
+    if (typeof stars === 'number') {
+      sourceStarsCache.set(key, stars);
+      return stars;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const makeRepositoriesQuery = (cursor: string | null) => {
   const arg = cursor ? `, after: "${cursor}"` : '';
@@ -816,7 +861,15 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
       sourceUrl,
       updatedAt: repo.updatedAt,
       createdAt: repo.createdAt,
-      stargazerCount: repo.stargazerCount,
+      stargazerCount: await (async () => {
+        if (sourceUrl) {
+          const sourceStars = await getStarsFromSourceUrl(sourceUrl);
+          if (typeof sourceStars === 'number') {
+            return Math.max(repo.stargazerCount, sourceStars);
+          }
+        }
+        return repo.stargazerCount;
+      })(),
       metamodule,
     },
   };

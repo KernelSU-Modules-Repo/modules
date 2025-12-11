@@ -8,10 +8,7 @@ import markdownItFootnote from 'markdown-it-footnote';
 import markdownItGitHubAlerts from 'markdown-it-github-alerts';
 import { full as markdownItEmoji } from 'markdown-it-emoji';
 import { Octokit } from '@octokit/rest';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import unzipper from 'unzipper';
 
 // Concurrent execution helper with limit
 async function pMap<T, R>(
@@ -559,11 +556,15 @@ function replacePrivateImage(markdown: string, html: string): string {
 
 async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
   try {
-    // Extract module.prop content from zip URL (internal network, stable)
-    const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 // 64KB buffer
-    });
+    // Extract module.prop content from zip URL using unzipper
+    const directory = await unzipper.Open.url(fetch, downloadUrl);
+    const modulePropFile = directory.files.find(f => f.path === 'module.prop');
+    
+    if (!modulePropFile) {
+      return {};
+    }
+    
+    const modulePropContent = (await modulePropFile.buffer()).toString('utf8');
 
     // Parse module.prop content
     const props: Record<string, string> = {};

@@ -23,6 +23,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.17",
+    "unzipper": "^0.12.3",
     "uuid": "^13.0.0"
   },
   "scripts": {
@@ -33,6 +34,7 @@
   },
   "type": "module",
   "devDependencies": {
-    "@types/markdown-it-footnote": "^3.0.4"
+    "@types/markdown-it-footnote": "^3.0.4",
+    "@types/unzipper": "^0.10.11"
   }
 }

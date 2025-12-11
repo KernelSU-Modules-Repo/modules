@@ -1,3 +1,10 @@
+/* Updated: added detailed diagnostic logging around asset download and extraction
+   - Logs asset metadata before extraction
+   - On extraction failure logs stdout/stderr from runzip
+   - Attempts to save the downloaded asset to a temp file via curl for post-mortem
+   - Lists zip entries (unzip -l) and prints head bytes for debugging
+   - Keeps behavior otherwise unchanged
+*/
 import fs from 'fs';
 import path from 'path';
 import { GraphQLClient, gql } from 'graphql-request';
@@ -10,6 +17,7 @@ import { full as markdownItEmoji } from 'markdown-it-emoji';
 import { Octokit } from '@octokit/rest';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
 
 const execAsync = promisify(exec);
 
@@ -559,15 +567,24 @@ function replacePrivateImage(markdown: string, html: string): string {
 
 async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
   try {
+    // Diagnostic log: show the download URL (truncated if very long)
+    const truncUrl = downloadUrl.length > 200 ? `${downloadUrl.slice(0, 200)}...[truncated]` : downloadUrl;
+    console.log(`Attempting to extract module.prop from URL: ${truncUrl}`);
+
     // Extract module.prop content from zip URL (internal network, stable)
+    console.log(`Running runzip to stream module.prop from remote zip (this may fail if URL needs special headers)`);
     const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
       encoding: 'utf8',
-      maxBuffer: 64 * 1024 // 64KB buffer
+      // increase buffer to reduce occasional truncation problems for larger outputs
+      maxBuffer: 256 * 1024 // 256KB buffer
     });
 
     // Parse module.prop content
     const props: Record<string, string> = {};
-    if (!modulePropContent) return props;
+    if (!modulePropContent) {
+      console.warn(`runzip returned empty output for ${truncUrl}`);
+      return props;
+    }
 
     const lines = modulePropContent.split('\n');
     for (const line of lines) {
@@ -582,9 +599,73 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
       }
     }
 
+    // Log basic module.prop parsing summary
+    console.log(`Extracted module.prop keys: ${Object.keys(props).join(', ')}`);
     return props;
   } catch (err: any) {
-    console.error(`Failed to extract props from ${downloadUrl}: ${err.message}`);
+    // Detailed error logging
+    console.error(`Failed to extract props from ${downloadUrl}: ${err?.message || err}`);
+    if (err?.stdout) {
+      console.error(`runzip stdout (truncated):\n${String(err.stdout).slice(0, 2000)}`);
+    }
+    if (err?.stderr) {
+      console.error(`runzip stderr (truncated):\n${String(err.stderr).slice(0, 2000)}`);
+    }
+
+    // Diagnostic: try to save the remote asset to disk for inspection using curl (best-effort)
+    try {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'diag-asset-'));
+      const tmpFile = path.join(tmpDir, `asset-${Date.now()}.zip`);
+      const tokenHeader = GRAPHQL_TOKEN ? `-H "Authorization: Bearer ${GRAPHQL_TOKEN}"` : '';
+      console.warn(`Diagnostic: saving remote asset to ${tmpFile} using curl (may reveal HTML or error pages)`);
+      try {
+        const curlCmd = `curl -sSL -f ${tokenHeader} "${downloadUrl}" -o "${tmpFile}"`;
+        const { stdout: curlOut, stderr: curlErr } = await execAsync(curlCmd, { maxBuffer: 20 * 1024 * 1024 });
+        if (curlOut) console.log(`curl stdout (truncated):\n${String(curlOut).slice(0, 1000)}`);
+        if (curlErr) console.warn(`curl stderr (truncated):\n${String(curlErr).slice(0, 1000)}`);
+      } catch (curlErr: any) {
+        console.warn(`curl download failed: ${curlErr?.message || curlErr}`);
+        if (curlErr?.stdout) console.warn(`curl stdout (truncated): ${String(curlErr.stdout).slice(0,1000)}`);
+        if (curlErr?.stderr) console.warn(`curl stderr (truncated): ${String(curlErr.stderr).slice(0,1000)}`);
+      }
+
+      // If file exists, try to list zip contents (unzip -l) and dump a head of bytes
+      if (fs.existsSync(tmpFile)) {
+        try {
+          const { stdout: listOut } = await execAsync(`unzip -l "${tmpFile}"`, { maxBuffer: 200 * 1024 });
+          console.log(`unzip -l output (first 200 lines):\n${listOut.split('\n').slice(0, 200).join('\n')}`);
+        } catch (listErr: any) {
+          console.warn(`unzip -l failed on ${tmpFile}: ${listErr?.message || listErr}`);
+          // Try zipinfo as alternative
+          try {
+            const { stdout: zipinfoOut } = await execAsync(`zipinfo -1 "${tmpFile}"`, { maxBuffer: 200 * 1024 });
+            console.log(`zipinfo -1 output (first 200 entries):\n${zipinfoOut.split('\n').slice(0,200).join('\n')}`);
+          } catch (ziErr: any) {
+            console.warn(`zipinfo failed: ${ziErr?.message || ziErr}`);
+          }
+        }
+
+        // Print head bytes (hex) for quick identification (HTML vs ZIP signature)
+        try {
+          const stats = fs.statSync(tmpFile);
+          const fd = fs.openSync(tmpFile, 'r');
+          const headLen = Math.min(256, stats.size);
+          const buf = Buffer.alloc(headLen);
+          fs.readSync(fd, buf, 0, headLen, 0);
+          fs.closeSync(fd);
+          console.log(`Saved file size: ${stats.size} bytes, head (hex, first ${headLen} bytes): ${buf.toString('hex').slice(0, 800)}`);
+        } catch (headErr: any) {
+          console.warn(`Failed to read head bytes of saved file: ${headErr?.message || headErr}`);
+        }
+
+        console.warn(`Diagnostic: kept saved asset at ${tmpFile} and dir ${tmpDir} for post-mortem analysis`);
+      } else {
+        console.warn(`Diagnostic: curl did not produce a file at ${tmpFile}`);
+      }
+    } catch (diagErr: any) {
+      console.warn(`Diagnostic step failed: ${diagErr?.message || diagErr}`);
+    }
+
     return {};
   }
 }
@@ -665,6 +746,16 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
         console.log(`Skipped release ${node.tagName} (${repo.name}): no zip asset found`);
         releaseSkipReasons.push({ tagName: node.tagName, reason: SkipReason.NO_ZIP_ASSET });
         return null;
+      }
+
+      // Add detailed logs about the asset we're about to process
+      try {
+        console.log(`Processing asset for ${repo.name}@${node.tagName}: assetName="${zipAsset.node.name}", size=${zipAsset.node.size}, contentType=${zipAsset.node.contentType}`);
+        // Show downloadUrl partially (avoid leaking extremely long urls)
+        const shortUrl = zipAsset.node.downloadUrl ? (zipAsset.node.downloadUrl.length > 200 ? `${zipAsset.node.downloadUrl.slice(0,200)}...[truncated]` : zipAsset.node.downloadUrl) : 'N/A';
+        console.log(`Asset downloadUrl (truncated): ${shortUrl}`);
+      } catch (logErr: any) {
+        console.warn(`Failed to log asset metadata: ${logErr?.message || logErr}`);
       }
 
       const moduleProps = await extractModulePropsFromZip(zipAsset.node.downloadUrl);

@@ -569,9 +569,9 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
         maxBuffer: 64 * 1024 // 64KB buffer
       });
 
-      // Check if content is empty - treat as failure and retry
-      if (!modulePropContent) {
-        throw new Error('Empty content returned from runzip');
+      // Check if content is empty or only whitespace - treat as failure and retry
+      if (!modulePropContent || !modulePropContent.trim()) {
+        throw new Error(`Empty content returned from runzip for URL: ${downloadUrl}`);
       }
 
       // Parse module.prop content

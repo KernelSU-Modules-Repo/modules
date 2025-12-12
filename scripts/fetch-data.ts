@@ -568,6 +568,7 @@ function replacePrivateImage(markdown: string, html: string): string {
 // Enhanced version with diagnostic logging that uses the reliable runzip tool
 async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
   const props: Record<string, string> = {};
+  const MAX_LOG_LENGTH = 500; // Maximum length for truncated log output
   
   try {
     console.log(`Extracting module.prop from: ${downloadUrl.substring(0, 100)}${downloadUrl.length > 100 ? '...' : ''}`);
@@ -577,13 +578,17 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
       throw new Error('Invalid download URL: must be from github.com or githubusercontent.com');
     }
     
-    // Validate URL doesn't contain shell metacharacters that could cause injection
-    if (/[`$\\!]/.test(downloadUrl)) {
-      throw new Error('Invalid download URL: contains potentially dangerous characters');
+    // Comprehensive validation: only allow safe URL characters
+    // Whitelist approach: alphanumeric, /, :, ., -, _, ?, =, &, %
+    if (!/^[a-zA-Z0-9/:.\-_?=&%]+$/.test(downloadUrl)) {
+      throw new Error('Invalid download URL: contains disallowed characters');
     }
     
+    // Additional safety: escape the URL for shell by wrapping in single quotes and escaping any single quotes
+    const escapedUrl = downloadUrl.replace(/'/g, "'\\''");
+    
     // Use runzip which is installed in CI and works reliably
-    const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
+    const { stdout: modulePropContent } = await execAsync(`runzip -p '${escapedUrl}' module.prop`, {
       encoding: 'utf8',
       maxBuffer: 128 * 1024 // Increased from 64KB to 128KB to reduce truncation
     });
@@ -618,8 +623,8 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
     
     // Log additional diagnostic info
     if (err.code) console.error(`Error code: ${err.code}`);
-    if (err.stderr) console.error(`stderr: ${String(err.stderr).substring(0, 500)}`);
-    if (err.stdout) console.error(`stdout: ${String(err.stdout).substring(0, 500)}`);
+    if (err.stderr) console.error(`stderr: ${String(err.stderr).substring(0, MAX_LOG_LENGTH)}`);
+    if (err.stdout) console.error(`stdout: ${String(err.stdout).substring(0, MAX_LOG_LENGTH)}`);
     
     return {};
   }

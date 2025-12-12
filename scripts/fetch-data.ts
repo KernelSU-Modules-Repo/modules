@@ -594,7 +594,7 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
       lastError = err;
       if (attempt < maxRetries) {
         console.warn(`Failed to extract props from ${downloadUrl} (attempt ${attempt}/${maxRetries}): ${err.message}, retrying...`);
-        // Add a small delay before retrying to avoid overwhelming the system
+        // Add exponential backoff delay (1s, 2s) before retrying to handle transient issues
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       } else {
         console.error(`Failed to extract props from ${downloadUrl} after ${maxRetries} attempts: ${err.message}`);

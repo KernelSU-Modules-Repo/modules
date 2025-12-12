@@ -565,255 +565,64 @@ function replacePrivateImage(markdown: string, html: string): string {
   return html;
 }
 
-// Replace the existing extractModulePropsFromZip with this enhanced diagnostic version.
+// Enhanced version with diagnostic logging that uses the reliable runzip tool
 async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
   const props: Record<string, string> = {};
-  const token = process.env.GRAPHQL_TOKEN || '';
-  const tmpdir = (await import('os')).tmpdir();
-  const fs = await import('fs');
-  const path = await import('path');
-  const util = await import('util');
-  const execP = util.promisify((await import('child_process')).exec);
-
-  // Short log helper
-  const trunc = (s: string, n = 200) => (s && s.length > n ? s.slice(0, n) + '...[truncated]' : s);
-
-  console.log(`Diagnostic: starting extraction for URL: ${trunc(downloadUrl, 400)}`);
-
-  // Try to download into memory via fetch (preferred) with retries
-  let buffer: Buffer | null = null;
+  
   try {
-    // dynamic fetch (use global fetch or node-fetch)
-    let fetchFn: any;
-    if (typeof (globalThis as any).fetch === 'function') {
-      fetchFn = (globalThis as any).fetch.bind(globalThis);
-    } else {
-      try {
-        const mod = await import('node-fetch');
-        fetchFn = (mod.default || mod) as any;
-      } catch (e) {
-        console.warn('node-fetch not available, will fallback to curl later');
-        fetchFn = null;
+    console.log(`Extracting module.prop from: ${downloadUrl.substring(0, 100)}${downloadUrl.length > 100 ? '...' : ''}`);
+    
+    // Validate URL to prevent command injection - must be a GitHub URL
+    if (!downloadUrl.startsWith('https://github.com/') && !downloadUrl.startsWith('https://objects.githubusercontent.com/')) {
+      throw new Error('Invalid download URL: must be from github.com or githubusercontent.com');
+    }
+    
+    // Validate URL doesn't contain shell metacharacters that could cause injection
+    if (/[`$\\!]/.test(downloadUrl)) {
+      throw new Error('Invalid download URL: contains potentially dangerous characters');
+    }
+    
+    // Use runzip which is installed in CI and works reliably
+    const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
+      encoding: 'utf8',
+      maxBuffer: 128 * 1024 // Increased from 64KB to 128KB to reduce truncation
+    });
+
+    if (!modulePropContent) {
+      console.warn('runzip returned empty content for module.prop');
+      return props;
+    }
+
+    console.log(`Successfully extracted module.prop (${modulePropContent.length} bytes)`);
+    
+    // Parse module.prop content
+    const lines = modulePropContent.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex > 0) {
+        const key = trimmed.substring(0, eqIndex).trim();
+        const value = trimmed.substring(eqIndex + 1).trim();
+        props[key] = value;
       }
     }
 
-    if (fetchFn) {
-      let lastErr: any = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          console.log(`HTTP: fetch attempt ${attempt} -> ${trunc(downloadUrl, 300)}`);
-          const res = await fetchFn(downloadUrl, {
-            method: 'GET',
-            redirect: 'follow',
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          });
-
-          // Log status and important headers
-          try {
-            const statusLine = `HTTP ${res.status} ${res.statusText || ''}`;
-            console.log(`HTTP: status: ${statusLine}`);
-            const hdrs: string[] = [];
-            const hdrNames = ['content-type', 'content-length', 'content-disposition', 'x-ratelimit-remaining', 'retry-after'];
-            for (const h of hdrNames) {
-              const v = res.headers?.get ? res.headers.get(h) : (res.headers && res.headers[h]);
-              if (v) hdrs.push(`${h}: ${v}`);
-            }
-            if (hdrs.length) console.log('HTTP headers:', hdrs.join(' | '));
-          } catch (hdrErr) {
-            console.warn('HTTP: failed to read some headers:', hdrErr?.message || hdrErr);
-          }
-
-          if (!res.ok) {
-            const body = await (res.text?.() ?? Promise.resolve(''));
-            throw new Error(`HTTP ${res.status} ${res.statusText} - body-snippet: ${trunc(String(body), 500)}`);
-          }
-
-          const arrayBuf = await res.arrayBuffer();
-          buffer = Buffer.from(arrayBuf);
-          console.log(`HTTP: downloaded ${buffer.length} bytes into memory`);
-          break;
-        } catch (e: any) {
-          lastErr = e;
-          const sleep = 200 * Math.pow(2, attempt - 1);
-          console.warn(`HTTP fetch attempt ${attempt} failed: ${e?.message || e}. Retrying in ${sleep}ms`);
-          await new Promise(r => setTimeout(r, sleep));
-        }
-      }
-      if (!buffer) throw lastErr || new Error('fetch failed after retries');
-    } else {
-      console.warn('Fetch not available; will fallback to curl download later.');
-      throw new Error('no-fetch');
-    }
-  } catch (e) {
-    console.warn('In-memory fetch path failed or unavailable:', e?.message || e);
+    const propKeys = Object.keys(props);
+    console.log(`Parsed ${propKeys.length} properties from module.prop: ${propKeys.join(', ')}`);
+    return props;
+    
+  } catch (err: any) {
+    console.error(`Failed to extract props from ${downloadUrl}: ${err.message}`);
+    
+    // Log additional diagnostic info
+    if (err.code) console.error(`Error code: ${err.code}`);
+    if (err.stderr) console.error(`stderr: ${String(err.stderr).substring(0, 500)}`);
+    if (err.stdout) console.error(`stdout: ${String(err.stdout).substring(0, 500)}`);
+    
+    return {};
   }
-
-  // If we have a buffer, inspect first bytes to detect HTML vs ZIP and try JS unzip
-  if (buffer) {
-    try {
-      const head = buffer.slice(0, 16);
-      const headHex = head.toString('hex');
-      const headStr = head.toString('utf8', 0, Math.min(64, head.length));
-      console.log(`Downloaded head (hex): ${headHex.slice(0, 200)}`);
-      console.log(`Downloaded head (utf8 snippet): ${trunc(headStr, 200)}`);
-
-      // ZIP signature "PK\x03\x04" -> 50 4b 03 04
-      if (headHex.startsWith('504b0304')) {
-        console.log('Detected ZIP signature in downloaded data (PK..). Proceeding with JS unzipper if available.');
-        try {
-          const unzipper = await import('unzipper');
-          const directory = await (unzipper as any).Open.buffer(buffer);
-          console.log(`unzipper: entries count = ${directory.files.length}`);
-          // Look for module.prop anywhere (root or nested)
-          let file = directory.files.find((f: any) => f.path === 'module.prop');
-          if (!file) file = directory.files.find((f: any) => /(^|\/|\\)module\.prop$/i.test(f.path));
-          if (!file) {
-            console.warn('unzipper: module.prop not found. Listing up to 200 entries for debugging:');
-            console.warn(directory.files.map((f: any) => f.path).slice(0, 200).join('\n'));
-            // save buffer to tmp for later analysis
-            const savePath = path.join(tmpdir, `diag-${Date.now()}.zip`);
-            fs.writeFileSync(savePath, buffer);
-            console.warn(`Saved downloaded zip to ${savePath} for post-mortem`);
-            return {};
-          }
-          const contentBuf: Buffer = await file.buffer();
-          const content = contentBuf.toString('utf8');
-          console.log(`Found module.prop at path="${file.path}", size=${contentBuf.length} bytes`);
-          console.log('module.prop snippet (first 400 chars):\n' + trunc(content, 400));
-          // parse properties
-          for (const line of content.split(/\r?\n/)) {
-            const t = line.trim();
-            if (!t || t.startsWith('#')) continue;
-            const idx = t.indexOf('=');
-            if (idx > 0) props[t.substring(0, idx).trim()] = t.substring(idx + 1).trim();
-          }
-          console.log(`Parsed module.prop keys: ${Object.keys(props).join(', ')}`);
-          return props;
-        } catch (jsUnzipErr: any) {
-          console.warn('JS unzip (unzipper) failed:', jsUnzipErr?.message || jsUnzipErr);
-          // save buffer for analysis
-          try {
-            const savePath = path.join(tmpdir, `diag-buffer-failed-${Date.now()}.zip`);
-            fs.writeFileSync(savePath, buffer);
-            console.warn(`Saved buffer to ${savePath} for post-mortem`);
-          } catch (saveErr: any) {
-            console.warn('Failed to save buffer for post-mortem:', saveErr?.message || saveErr);
-          }
-          // fallthrough to external unzip fallback
-        }
-      } else {
-        console.warn('Downloaded head does NOT look like ZIP. It may be HTML/error page. head snippet:', trunc(headStr, 200));
-        // save buffer for analysis
-        try {
-          const savePath = path.join(tmpdir, `diag-nonzip-${Date.now()}.bin`);
-          fs.writeFileSync(savePath, buffer);
-          console.warn(`Saved downloaded response to ${savePath} for post-mortem`);
-        } catch (saveErr: any) {
-          console.warn('Failed to save non-zip buffer:', saveErr?.message || saveErr);
-        }
-        // no point continuing JS-unzip path
-      }
-    } catch (inspectErr: any) {
-      console.warn('Failed to inspect downloaded buffer:', inspectErr?.message || inspectErr);
-    }
-  }
-
-  // External-tool fallback: write file via curl and use unzip -l / unzip -p to inspect and extract module.prop
-  try {
-    const tmpDir = fs.mkdtempSync(path.join(tmpdir, 'diag-curl-'));
-    const tmpFile = path.join(tmpDir, `asset-${Date.now()}.zip`);
-    const authHeader = token ? `-H "Authorization: Bearer ${token}"` : '';
-    console.log(`Fallback: saving remote asset to ${tmpFile} using curl (authHeader present: ${!!token})`);
-    try {
-      // use curl -I to get headers first
-      try {
-        const { stdout: headOut } = await execP(`curl -I -L ${authHeader} "${downloadUrl}"`, { maxBuffer: 64 * 1024 });
-        console.log('curl -I -L headers:\n' + trunc(headOut, 2000));
-      } catch (hiErr: any) {
-        console.warn('curl -I failed:', hiErr?.message || hiErr);
-      }
-
-      // then try to download
-      try {
-        await execP(`curl -sSL -f ${authHeader} "${downloadUrl}" -o "${tmpFile}"`, { maxBuffer: 200 * 1024 * 1024 });
-        console.log(`curl: downloaded file saved to ${tmpFile}`);
-      } catch (curlErr: any) {
-        console.error('curl download failed:', curlErr?.message || curlErr);
-        if (curlErr?.stdout) console.error('curl stdout snippet:', trunc(String(curlErr.stdout), 2000));
-        if (curlErr?.stderr) console.error('curl stderr snippet:', trunc(String(curlErr.stderr), 2000));
-        // keep going to try to list file if present
-      }
-
-      // If file exists, list entries
-      if (fs.existsSync(tmpFile)) {
-        try {
-          const { stdout: listOut } = await execP(`unzip -l "${tmpFile}"`, { maxBuffer: 200 * 1024 });
-          console.log('unzip -l output (first 200 lines):\n' + listOut.split('\n').slice(0, 200).join('\n'));
-        } catch (listErr: any) {
-          console.warn('unzip -l failed:', listErr?.message || listErr);
-          try {
-            const { stdout: ziOut } = await execP(`zipinfo -1 "${tmpFile}"`, { maxBuffer: 200 * 1024 });
-            console.log('zipinfo -1 output (first 200 entries):\n' + ziOut.split('\n').slice(0, 200).join('\n'));
-          } catch (ziErr: any) {
-            console.warn('zipinfo failed:', ziErr?.message || ziErr);
-          }
-        }
-
-        // try to find module.prop entry via zipinfo and extract it
-        try {
-          const { stdout: entriesOut } = await execP(`zipinfo -1 "${tmpFile}"`, { maxBuffer: 200 * 1024 });
-          const entries = entriesOut.split('\n').map(s => s.trim()).filter(Boolean);
-          const candidate = entries.find(e => e === 'module.prop') || entries.find(e => /(^|\/|\\)module\.prop$/i.test(e));
-          if (candidate) {
-            console.log(`Found module.prop entry in zip: ${candidate}. Attempting to extract via unzip -p`);
-            try {
-              const { stdout: propOut } = await execP(`unzip -p "${tmpFile}" "${candidate.replace(/"/g,'\\"')}"`, { maxBuffer: 128 * 1024, encoding: 'utf8' } as any);
-              console.log('module.prop content snippet (first 400 chars):\n' + trunc(propOut, 400));
-              for (const line of propOut.split(/\r?\n/)) {
-                const t = line.trim();
-                if (!t || t.startsWith('#')) continue;
-                const idx = t.indexOf('=');
-                if (idx > 0) props[t.substring(0, idx).trim()] = t.substring(idx + 1).trim();
-              }
-              console.log(`Parsed module.prop keys (fallback): ${Object.keys(props).join(', ')}`);
-              return props;
-            } catch (extractErr: any) {
-              console.warn('unzip -p extraction failed:', extractErr?.message || extractErr);
-            }
-          } else {
-            console.warn('No module.prop entry found in zip entries');
-          }
-        } catch (entriesErr: any) {
-          console.warn('Failed to list zip entries for candidate search:', entriesErr?.message || entriesErr);
-        }
-
-        // dump first bytes of file to help identify HTML vs ZIP
-        try {
-          const stats = fs.statSync(tmpFile);
-          const fd = fs.openSync(tmpFile, 'r');
-          const headLen = Math.min(256, stats.size);
-          const buf = Buffer.alloc(headLen);
-          fs.readSync(fd, buf, 0, headLen, 0);
-          fs.closeSync(fd);
-          console.log(`Saved file size: ${stats.size} bytes, head (hex): ${buf.toString('hex').slice(0, 512)}`);
-        } catch (headErr: any) {
-          console.warn('Failed to read head bytes of saved file:', headErr?.message || headErr);
-        }
-
-        console.warn(`Diagnostic: kept downloaded file for post-mortem at ${tmpFile} (directory ${tmpDir})`);
-      } else {
-        console.warn('Diagnostic: curl did not produce a saved file (download may have failed)');
-      }
-    } catch (outerErr: any) {
-      console.warn('Fallback diagnostic failed:', outerErr?.message || outerErr);
-    }
-  } catch (finalErr: any) {
-    console.warn('Final diagnostics path encountered an error:', finalErr?.message || finalErr);
-  }
-
-  // If we reached here, no module.prop was parsed
-  console.warn('Diagnostic: unable to extract module.prop from URL. Returning empty props.');
-  return {};
 }
 
 const RESERVED_NAMES = ['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example', "module_release"];
@@ -898,7 +707,7 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
       try {
         console.log(`Processing asset for ${repo.name}@${node.tagName}: assetName="${zipAsset.node.name}", size=${zipAsset.node.size}, contentType=${zipAsset.node.contentType}`);
         // Show downloadUrl partially (avoid leaking extremely long urls)
-        const shortUrl = zipAsset.node.downloadUrl ? (zipAsset.node.downloadUrl.length > 200 ? `${zipAsset.node.downloadUrl.slice(0,200)}...[truncated]` : zipAsset.node.downloadUrl) : 'N/A';
+        const shortUrl = zipAsset.node.downloadUrl ? (zipAsset.node.downloadUrl.length > 200 ? `${zipAsset.node.downloadUrl.slice(0, 200)}...[truncated]` : zipAsset.node.downloadUrl) : 'N/A';
         console.log(`Asset downloadUrl (truncated): ${shortUrl}`);
       } catch (logErr: any) {
         console.warn(`Failed to log asset metadata: ${logErr?.message || logErr}`);

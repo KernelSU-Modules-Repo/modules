@@ -569,10 +569,13 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
         maxBuffer: 64 * 1024 // 64KB buffer
       });
 
+      // Check if content is empty - treat as failure and retry
+      if (!modulePropContent) {
+        throw new Error('Empty content returned from runzip');
+      }
+
       // Parse module.prop content
       const props: Record<string, string> = {};
-      if (!modulePropContent) return props;
-
       const lines = modulePropContent.split('\n');
       for (const line of lines) {
         const trimmed = line.trim();

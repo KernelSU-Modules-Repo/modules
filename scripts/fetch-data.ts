@@ -558,35 +558,46 @@ function replacePrivateImage(markdown: string, html: string): string {
 }
 
 async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
-  try {
-    // Extract module.prop content from zip URL (internal network, stable)
-    const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 // 64KB buffer
-    });
+  const maxRetries = 3;
+  let lastError: any;
 
-    // Parse module.prop content
-    const props: Record<string, string> = {};
-    if (!modulePropContent) return props;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Extract module.prop content from zip URL (internal network, stable)
+      const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 // 64KB buffer
+      });
 
-    const lines = modulePropContent.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
+      // Parse module.prop content
+      const props: Record<string, string> = {};
+      if (!modulePropContent) return props;
 
-      const eqIndex = trimmed.indexOf('=');
-      if (eqIndex > 0) {
-        const key = trimmed.substring(0, eqIndex).trim();
-        const value = trimmed.substring(eqIndex + 1).trim();
-        props[key] = value;
+      const lines = modulePropContent.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+
+        const eqIndex = trimmed.indexOf('=');
+        if (eqIndex > 0) {
+          const key = trimmed.substring(0, eqIndex).trim();
+          const value = trimmed.substring(eqIndex + 1).trim();
+          props[key] = value;
+        }
+      }
+
+      return props;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        console.warn(`Failed to extract props from ${downloadUrl} (attempt ${attempt}/${maxRetries}): ${err.message}, retrying...`);
+      } else {
+        console.error(`Failed to extract props from ${downloadUrl} after ${maxRetries} attempts: ${err.message}`);
       }
     }
-
-    return props;
-  } catch (err: any) {
-    console.error(`Failed to extract props from ${downloadUrl}: ${err.message}`);
-    return {};
   }
+
+  return {};
 }
 
 const RESERVED_NAMES = ['.github', 'submission', 'developers', 'modules', 'org.kernelsu.example', "module_release"];

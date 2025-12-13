@@ -22,6 +22,7 @@ async function retryWithBackoff<T>(
     initialDelay?: number;
     maxDelay?: number;
     backoffMultiplier?: number;
+    validateResult?: (result: T) => boolean;
   } = {}
 ): Promise<T> {
   const {
@@ -29,13 +30,21 @@ async function retryWithBackoff<T>(
     initialDelay = 1000,
     maxDelay = 10000,
     backoffMultiplier = 2,
+    validateResult,
   } = options;
 
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await fn();
+      const result = await fn();
+
+      // If validation function is provided, check if result is valid
+      if (validateResult && !validateResult(result)) {
+        throw new Error('Result validation failed - result is empty or invalid');
+      }
+
+      return result;
     } catch (error: any) {
       lastError = error;
 
@@ -719,7 +728,11 @@ async function extractModuleProps(
         maxRetries: 5,
         initialDelay: 1000,
         maxDelay: 16000,
-        backoffMultiplier: 2
+        backoffMultiplier: 2,
+        validateResult: (result) => {
+          // Validate that stdout is not empty
+          return !!(result.stdout && result.stdout.trim().length > 0);
+        }
       }
     );
 

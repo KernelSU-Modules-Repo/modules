@@ -13,6 +13,42 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+// Retry helper with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    initialDelay?: number;
+    maxDelay?: number;
+    backoffMultiplier?: number;
+  } = {}
+): Promise<T> {
+  const {
+    maxRetries = 3,
+    initialDelay = 1000,
+    maxDelay = 10000,
+    backoffMultiplier = 2,
+  } = options;
+
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      if (attempt < maxRetries) {
+        const delay = Math.min(initialDelay * Math.pow(backoffMultiplier, attempt), maxDelay);
+        console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms delay: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // Concurrent execution helper with limit
 async function pMap<T, R>(
   items: T[],
@@ -559,11 +595,19 @@ function replacePrivateImage(markdown: string, html: string): string {
 
 async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
   try {
-    // Extract module.prop content from zip URL (internal network, stable)
-    const { stdout: modulePropContent } = await execAsync(`runzip -p "${downloadUrl}" module.prop`, {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 // 64KB buffer
-    });
+    // Extract module.prop content from zip URL with retry and backoff
+    const { stdout: modulePropContent } = await retryWithBackoff(
+      () => execAsync(`runzip -p "${downloadUrl}" module.prop`, {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 // 64KB buffer
+      }),
+      {
+        maxRetries: 5,
+        initialDelay: 1000,
+        maxDelay: 16000,
+        backoffMultiplier: 2
+      }
+    );
 
     // Parse module.prop content
     const props: Record<string, string> = {};

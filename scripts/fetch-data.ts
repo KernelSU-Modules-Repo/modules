@@ -10,6 +10,7 @@ import { full as markdownItEmoji } from 'markdown-it-emoji';
 import { Octokit } from '@octokit/rest';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import jwt from 'jsonwebtoken';
 
 const execAsync = promisify(exec);
 
@@ -242,6 +243,100 @@ const SKIP_REASON_MESSAGES: Record<SkipReason, { title: string; body: string }> 
 const PAGINATION = 10;
 const GRAPHQL_TOKEN = process.env.GRAPHQL_TOKEN;
 const GITHUB_ORG = 'KernelSU-Modules-Repo';
+const JWT_SECRET = process.env.JWT_SECRET || 'kernelsu-modules-default-secret';
+
+// JWT payload type for module props
+type ModulePropsJWT = {
+  props: Record<string, string>;
+  downloadUrl: string;
+  tagName: string;
+};
+
+// Extract JWT from release description
+function extractJWTFromDescription(description: string): string | null {
+  if (!description) return null;
+
+  const firstLine = description.split('\n')[0].trim();
+  const match = firstLine.match(/^<!--\s*(.+?)\s*-->$/);
+
+  if (match) {
+    return match[1].trim();
+  }
+
+  return null;
+}
+
+// Verify and decode JWT from release description
+function verifyAndDecodeJWT(token: string): ModulePropsJWT | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as ModulePropsJWT;
+
+    // Validate structure
+    if (!decoded.props || !decoded.downloadUrl || !decoded.tagName) {
+      console.error('Invalid JWT structure');
+      return null;
+    }
+
+    return decoded;
+  } catch (err: any) {
+    console.error(`JWT verification failed: ${err.message}`);
+    return null;
+  }
+}
+
+// Create JWT token for module props
+function createPropsJWT(props: Record<string, string>, downloadUrl: string, tagName: string): string {
+  const payload: ModulePropsJWT = {
+    props,
+    downloadUrl,
+    tagName,
+  };
+
+  // No expiration - immutable releases never change
+  return jwt.sign(payload, JWT_SECRET);
+}
+
+// Update release description with JWT comment
+async function updateReleaseDescriptionWithJWT(
+  repoName: string,
+  tagName: string,
+  originalDescription: string,
+  token: string
+): Promise<void> {
+  try {
+    // Remove existing JWT comment if present
+    const lines = originalDescription.split('\n');
+    const firstLine = lines[0].trim();
+    const hasExistingJWT = firstLine.match(/^<!--\s*.+?\s*-->$/);
+
+    let descriptionWithoutJWT = originalDescription;
+    if (hasExistingJWT) {
+      descriptionWithoutJWT = lines.slice(1).join('\n').trim();
+    }
+
+    // Prepend new JWT comment
+    const newDescription = `<!-- ${token} -->\n${descriptionWithoutJWT}`;
+
+    // Get release by tag
+    const { data: release } = await octokit.repos.getReleaseByTag({
+      owner: GITHUB_ORG,
+      repo: repoName,
+      tag: tagName,
+    });
+
+    // Update release description
+    await octokit.repos.updateRelease({
+      owner: GITHUB_ORG,
+      repo: repoName,
+      release_id: release.id,
+      body: newDescription,
+    });
+
+    console.log(`Updated release ${repoName}@${tagName} description with JWT cache`);
+  } catch (err: any) {
+    console.error(`Failed to update release description for ${repoName}@${tagName}: ${err.message}`);
+  }
+}
 
 // Initialize Octokit client
 const octokit = new Octokit({
@@ -593,9 +688,28 @@ function replacePrivateImage(markdown: string, html: string): string {
   return html;
 }
 
-async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<string, string>> {
+async function extractModuleProps(
+  downloadUrl: string,
+  repoName: string,
+  tagName: string,
+  description: string
+): Promise<Record<string, string>> {
   try {
-    // Extract module.prop content from zip URL with retry and backoff
+    // First, try to extract and verify JWT from description
+    const jwtToken = extractJWTFromDescription(description);
+
+    if (jwtToken) {
+      const decoded = verifyAndDecodeJWT(jwtToken);
+
+      if (decoded && decoded.downloadUrl === downloadUrl && decoded.tagName === tagName) {
+        console.log(`Using cached props from JWT for ${repoName}@${tagName}`);
+        return decoded.props;
+      } else {
+        console.log(`JWT cache invalid or mismatched for ${repoName}@${tagName}, fetching from zip...`);
+      }
+    }
+
+    // No valid JWT, extract from zip with retry and backoff
     const { stdout: modulePropContent } = await retryWithBackoff(
       () => execAsync(`runzip -p "${downloadUrl}" module.prop`, {
         encoding: 'utf8',
@@ -624,6 +738,14 @@ async function extractModulePropsFromZip(downloadUrl: string): Promise<Record<st
         const value = trimmed.substring(eqIndex + 1).trim();
         props[key] = value;
       }
+    }
+
+    // Generate JWT and update release description (async, don't wait)
+    if (Object.keys(props).length > 0) {
+      const token = createPropsJWT(props, downloadUrl, tagName);
+      updateReleaseDescriptionWithJWT(repoName, tagName, description, token).catch(err => {
+        console.error(`Background JWT update failed for ${repoName}@${tagName}: ${err.message}`);
+      });
     }
 
     return props;
@@ -711,7 +833,12 @@ async function convert2json(repo: GraphQlRepository): Promise<ConvertResult> {
         return null;
       }
 
-      const moduleProps = await extractModulePropsFromZip(zipAsset.node.downloadUrl);
+      const moduleProps = await extractModuleProps(
+        zipAsset.node.downloadUrl,
+        repo.name,
+        node.tagName,
+        node.description
+      );
 
       // Check if module.prop exists (empty props means extraction failed)
       if (Object.keys(moduleProps).length === 0) {
